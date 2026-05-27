@@ -33,7 +33,8 @@ export function rasterizeText(text: string): Bitmap {
   const metrics = ctx.measureText(text);
   const ascent = metrics.actualBoundingBoxAscent || FONT_PX * 0.8;
   const descent = metrics.actualBoundingBoxDescent || FONT_PX * 0.2;
-  const width = Math.max(1, Math.ceil(metrics.width));
+  const left = Math.max(0, Math.ceil(metrics.actualBoundingBoxLeft || 0));
+  const width = Math.max(1, Math.ceil(metrics.width) + left);
   const height = Math.max(1, Math.ceil(ascent + descent));
 
   if (width * height > MAX_CELLS) {
@@ -45,7 +46,7 @@ export function rasterizeText(text: string): Bitmap {
   ctx.font = font;
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = "#fff";
-  ctx.fillText(text, 0, ascent);
+  ctx.fillText(text, left, ascent);
 
   const { data } = ctx.getImageData(0, 0, width, height);
   return thresholdAlpha(data, width, height, 128);

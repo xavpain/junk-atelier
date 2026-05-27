@@ -24,13 +24,26 @@ async function main() {
 
   const renderer = createRenderer(canvas);
 
+  const errorEl = document.createElement("div");
+  errorEl.id = "error";
+  errorEl.style.cssText =
+    "position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#5a1a1a;" +
+    "color:#fff;border-radius:4px;font-size:12px;display:none;z-index:10;";
+  document.body.appendChild(errorEl);
+
   // Re-rasterize only when text changes; null sentinel forces the first pass.
   let lastText: string | null = null;
   function sync() {
     const s = store.get();
     if (s.text !== lastText) {
       lastText = s.text;
-      renderer.setBitmap(rasterizeText(s.text));
+      try {
+        renderer.setBitmap(rasterizeText(s.text));
+        errorEl.style.display = "none";
+      } catch (err) {
+        errorEl.textContent = (err as Error).message;
+        errorEl.style.display = "block";
+      }
     }
     renderer.setState(s);
   }

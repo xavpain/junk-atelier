@@ -23,6 +23,7 @@ export function buildPanel(root: HTMLElement, store: Store, cb: PanelCallbacks):
   const rotY = slider("p-roty", "Rotate Y", -Math.PI, Math.PI, 0.01, s.objRotation.y);
   const rotZ = slider("p-rotz", "Rotate Z", -Math.PI, Math.PI, 0.01, s.objRotation.z);
   const scale = slider("p-scale", "Scale", 0.2, 4, 0.01, s.scale);
+  const fov = slider("p-fov", "FOV (deg)", 10, 120, 1, (s.fov * 180) / Math.PI);
   const cell = slider("p-cell", "Resolution (cell px)", 2, 24, 1, s.cellSize);
 
   const buttons = document.createElement("div");
@@ -30,7 +31,7 @@ export function buildPanel(root: HTMLElement, store: Store, cb: PanelCallbacks):
   buttons.innerHTML = `<button id="p-reset">Reset</button>
     <button id="p-share">Share</button><button id="p-export">PNG</button>`;
 
-  root.append(textLabel, shapeLabel, rotX.el, rotY.el, rotZ.el, scale.el, cell.el, buttons);
+  root.append(textLabel, shapeLabel, rotX.el, rotY.el, rotZ.el, scale.el, fov.el, cell.el, buttons);
 
   (root.querySelector("#p-text") as HTMLInputElement)
     .addEventListener("input", (e) => store.set({ text: (e.target as HTMLInputElement).value }));
@@ -41,6 +42,7 @@ export function buildPanel(root: HTMLElement, store: Store, cb: PanelCallbacks):
   rotY.bind((v) => store.set({ objRotation: { ...store.get().objRotation, y: v } }));
   rotZ.bind((v) => store.set({ objRotation: { ...store.get().objRotation, z: v } }));
   scale.bind((v) => store.set({ scale: v }));
+  fov.bind((deg) => store.set({ fov: (deg * Math.PI) / 180 }));
   cell.bind((v) => store.set({ cellSize: v }));
 
   (root.querySelector("#p-reset") as HTMLButtonElement).addEventListener("click", cb.onReset);
