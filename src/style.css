@@ -1,0 +1,12 @@
+@font-face {
+  font-family: "Geist Pixel Square";
+  src: url("/fonts/GeistPixelSquare.woff2") format("woff2");
+  font-display: block;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #0a0a0a; color: #ededed;
+  font-family: system-ui, sans-serif; overflow: hidden; }
+#app { position: fixed; inset: 0; }
+#viewer { display: block; width: 100%; height: 100%; cursor: grab; }
+#viewer.dragging { cursor: grabbing; }
