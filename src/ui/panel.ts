@@ -1,8 +1,9 @@
-import type { Shape, AnimMode, BgStyle, ColorMode, Axis, Pane, Background } from "../types";
+import type { Shape, AnimMode, BgStyle, ColorMode, Axis, PaneSource, Pane, Background } from "../types";
 import type { Store } from "../state/store";
 import {
   getSelected, addPane, duplicatePane, deletePane, selectPane, updateSelected,
 } from "../state/store";
+import { FONT_CATALOG } from "../font/rasterizeText";
 
 export interface PanelCallbacks {
   onExport: () => void;
@@ -10,6 +11,8 @@ export interface PanelCallbacks {
   onReset: () => void;
   onRecord: () => void;
   onResetCamera: () => void;
+  onImportMedia: (file: File) => void;
+  onRemoveMedia: () => void;
 }
 
 // Collapse state persists across rebuilds (rebuilt on selection / pane changes).
@@ -41,7 +44,7 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   });
   panes.append(list);
   panes.append(rowOf(
-    btn("+ Add", () => store.update(addPane)),
+    btn("+ Add", () => store.update(addPane), "accent"),
     btn("Dup", () => store.update(duplicatePane)),
     btn("Del", () => store.update(deletePane), "danger"),
   ));
@@ -69,7 +72,7 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   const actions = group(body, "Export", true);
   actions.append(rowOf(btn("Reset", cb.onReset), btn("Share", cb.onShare), btn("PNG", cb.onExport)));
   const rec = el("div", "row");
-  rec.append(btn("Record WebM", cb.onRecord));
+  rec.append(btn("Record WebM", cb.onRecord, "accent"));
   const lenWrap = el("label", "inline grow");
   lenWrap.innerHTML = `<span>len</span><input type="range" id="p-dur" min="1" max="30" step="1" value="6">`;
   rec.append(lenWrap);
@@ -78,25 +81,37 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
 
 // ---------------- RIGHT: selected pane ----------------
 
-function buildRight(root: HTMLElement, store: Store, _cb: PanelCallbacks): void {
+function buildRight(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   const sel = getSelected(store.get());
   root.innerHTML = "";
   root.classList.toggle("collapsed", rightCollapsed);
 
-  const title = (sel.text.split("\n")[0] || "pane").slice(0, 14);
+  const title = (sel.source === "media" ? (sel.mediaName || "media") : (sel.text.split("\n")[0] || "pane")).slice(0, 14);
   const body = panelShell(root, `Pane · ${title}`, () => { rightCollapsed = !rightCollapsed; root.classList.toggle("collapsed", rightCollapsed); });
 
   const up = (patch: Partial<Pane>) => store.update((s) => updateSelected(s, patch));
   const cur = () => getSelected(store.get());
 
-  // Text & shape
-  const g1 = group(body, "Text & shape", true);
-  const ta = el("label") as HTMLElement;
-  ta.innerHTML = `<span>Text</span><textarea id="p-text" rows="2">${esc(sel.text)}</textarea>`;
-  g1.append(ta);
-  (ta.querySelector("#p-text") as HTMLTextAreaElement).addEventListener("input", (e) => up({ text: (e.target as HTMLTextAreaElement).value }));
-  selectRow(g1, "Shape", ["square", "grid", "circle", "triangle", "line"], sel.shape, (v) => up({ shape: v as Shape }));
-  sliderRow(g1, "Thickness", -4, 4, 1, sel.thickness, (v) => up({ thickness: v }));
+  // Source
+  const g1 = group(body, "Source", true);
+  selectRow(g1, "Type", ["text", "media"], sel.source, (v) => up({ source: v as PaneSource }));
+
+  if (sel.source === "text") {
+    const ta = el("label") as HTMLElement;
+    ta.innerHTML = `<span>Text</span><textarea id="p-text" rows="2">${esc(sel.text)}</textarea>`;
+    g1.append(ta);
+    (ta.querySelector("#p-text") as HTMLTextAreaElement).addEventListener("input", (e) => up({ text: (e.target as HTMLTextAreaElement).value }));
+    selectRow(g1, "Font", FONT_CATALOG, sel.font, (v) => up({ font: v }));
+    selectRow(g1, "Shape", ["square", "grid", "circle", "triangle", "line"], sel.shape, (v) => up({ shape: v as Shape }));
+    sliderRow(g1, "Thickness", -4, 4, 1, sel.thickness, (v) => up({ thickness: v }));
+  } else {
+    const file = document.createElement("input");
+    file.type = "file"; file.accept = "image/*,video/*"; file.style.display = "none";
+    file.addEventListener("change", () => { if (file.files?.[0]) cb.onImportMedia(file.files[0]); });
+    const imp = btn(sel.mediaName ? `Replace · ${sel.mediaName.slice(0, 12)}` : "Import image / video / gif", () => file.click());
+    g1.append(rowOf(imp), file);
+    if (sel.mediaName) g1.append(rowOf(btn("Remove media", cb.onRemoveMedia, "danger")));
+  }
   sliderRow(g1, "Resolution", 2, 24, 1, sel.cellSize, (v) => up({ cellSize: v }));
   sliderRow(g1, "Scale", 0.2, 8, 0.01, sel.scale, (v) => up({ scale: v }));
 
@@ -111,14 +126,16 @@ function buildRight(root: HTMLElement, store: Store, _cb: PanelCallbacks): void 
   sliderRow(g2, "Skew X", -1.5, 1.5, 0.01, sel.skew.x, (v) => up({ skew: { ...cur().skew, x: v } }));
   sliderRow(g2, "Skew Y", -1.5, 1.5, 0.01, sel.skew.y, (v) => up({ skew: { ...cur().skew, y: v } }));
 
-  // Color
+  // Color (media keeps its sampled colours; only opacity applies)
   const g3 = group(body, "Color", true);
-  selectRow(g3, "Mode", ["solid", "gradient"], sel.colorMode, (v) => up({ colorMode: v as ColorMode }));
-  const cwrap = el("label");
-  cwrap.innerHTML = `<span>Colors</span><div class="row"><input type="color" id="p-color" value="${esc(sel.color)}"><input type="color" id="p-color2" value="${esc(sel.color2)}"></div>`;
-  g3.append(cwrap);
-  (cwrap.querySelector("#p-color") as HTMLInputElement).addEventListener("input", (e) => up({ color: (e.target as HTMLInputElement).value }));
-  (cwrap.querySelector("#p-color2") as HTMLInputElement).addEventListener("input", (e) => up({ color2: (e.target as HTMLInputElement).value }));
+  if (sel.source === "text") {
+    selectRow(g3, "Mode", ["solid", "gradient"], sel.colorMode, (v) => up({ colorMode: v as ColorMode }));
+    const cwrap = el("label");
+    cwrap.innerHTML = `<span>Colors</span><div class="row"><input type="color" id="p-color" value="${esc(sel.color)}"><input type="color" id="p-color2" value="${esc(sel.color2)}"></div>`;
+    g3.append(cwrap);
+    (cwrap.querySelector("#p-color") as HTMLInputElement).addEventListener("input", (e) => up({ color: (e.target as HTMLInputElement).value }));
+    (cwrap.querySelector("#p-color2") as HTMLInputElement).addEventListener("input", (e) => up({ color2: (e.target as HTMLInputElement).value }));
+  }
   sliderRow(g3, "Opacity", 0, 1, 0.01, sel.alpha, (v) => up({ alpha: v }));
 
   // Card backing
@@ -127,12 +144,14 @@ function buildRight(root: HTMLElement, store: Store, _cb: PanelCallbacks): void 
   colorRow(g4, "Card color", sel.cardColor, (v) => up({ cardColor: v }));
   sliderRow(g4, "Card opacity", 0, 1, 0.01, sel.cardAlpha, (v) => up({ cardAlpha: v }));
 
-  // Text scroll
-  const g5 = group(body, "Text scroll", false);
-  checkRow(g5, "Enable", sel.animate, (v) => up({ animate: v }));
-  selectRow(g5, "Mode", ["credits", "marquee"], sel.animMode, (v) => up({ animMode: v as AnimMode }));
-  selectRow(g5, "Direction", ["forward", "reverse"], sel.animDir === 1 ? "forward" : "reverse", (v) => up({ animDir: v === "forward" ? 1 : -1 }));
-  sliderRow(g5, "Speed", 0, 300, 5, sel.animSpeed, (v) => up({ animSpeed: v }));
+  // Text scroll (text source only)
+  if (sel.source === "text") {
+    const g5 = group(body, "Text scroll", false);
+    checkRow(g5, "Enable", sel.animate, (v) => up({ animate: v }));
+    selectRow(g5, "Mode", ["credits", "marquee"], sel.animMode, (v) => up({ animMode: v as AnimMode }));
+    selectRow(g5, "Direction", ["forward", "reverse"], sel.animDir === 1 ? "forward" : "reverse", (v) => up({ animDir: v === "forward" ? 1 : -1 }));
+    sliderRow(g5, "Speed", 0, 300, 5, sel.animSpeed, (v) => up({ animSpeed: v }));
+  }
 
   // Motion
   const g6 = group(body, "Motion", false);

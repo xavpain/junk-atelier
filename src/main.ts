@@ -1,13 +1,14 @@
 import "./style.css";
 import type { Bitmap, Scene } from "./types";
-import { createStore, defaultScene, defaultCamera, selectPane } from "./state/store";
+import { createStore, defaultScene, defaultCamera, selectPane, updateSelected, getSelected } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
-import { loadGeistPixel, rasterizeText } from "./font/rasterizeText";
+import { loadGeistPixel, rasterizeText, ensureFont } from "./font/rasterizeText";
 import { createRenderer } from "./render/renderer";
 import { attachControls } from "./interaction/controls";
 import { buildPanels } from "./ui/panel";
 import { exportPng } from "./export/exportPng";
 import { recordWebm } from "./export/exportWebm";
+import { importMediaForPane, removeMedia, sampleMedia } from "./media/media";
 
 async function main() {
   const canvas = document.getElementById("viewer") as HTMLCanvasElement;
@@ -26,6 +27,7 @@ async function main() {
   }
 
   const renderer = createRenderer(canvas);
+  renderer.setMediaSampler(sampleMedia);
 
   const errorEl = document.createElement("div");
   errorEl.id = "error";
@@ -34,20 +36,39 @@ async function main() {
     "color:#fff;border-radius:4px;font-size:12px;display:none;z-index:10;";
   document.body.appendChild(errorEl);
 
-  // Per-pane bitmap cache; re-rasterize a pane only when its text/thickness change.
-  const cache = new Map<string, { text: string; thickness: number; bitmap: Bitmap }>();
+  // Font loading: Geist is ready (awaited above); other families load on demand
+  // and trigger a re-render once available.
+  const fontReady = new Set<string>(["Geist Pixel Square"]);
+  const fontKicked = new Set<string>();
+  function maybeLoadFont(family: string) {
+    if (fontReady.has(family) || fontKicked.has(family)) return;
+    fontKicked.add(family);
+    ensureFont(family).then(() => {
+      fontReady.add(family);
+      for (const [id, c] of cache) if (c.font === family) cache.delete(id);
+      const s = store.get();
+      syncBitmaps(s);
+      renderer.setScene(s);
+    });
+  }
+
+  // Per-pane bitmap cache; re-rasterize a text pane only when its inputs change.
+  // Media panes carry no bitmap — the renderer samples them via the media sampler.
+  const cache = new Map<string, { text: string; thickness: number; font: string; bitmap: Bitmap }>();
   function syncBitmaps(scene: Scene) {
     const map = new Map<string, Bitmap>();
     let err = "";
     for (const p of scene.panes) {
+      if (p.source === "media") continue;
+      maybeLoadFont(p.font);
       const hit = cache.get(p.id);
-      if (hit && hit.text === p.text && hit.thickness === p.thickness) {
+      if (hit && hit.text === p.text && hit.thickness === p.thickness && hit.font === p.font) {
         map.set(p.id, hit.bitmap);
         continue;
       }
       try {
-        const bitmap = rasterizeText(p.text, p.thickness);
-        cache.set(p.id, { text: p.text, thickness: p.thickness, bitmap });
+        const bitmap = rasterizeText(p.text, p.thickness, p.font);
+        cache.set(p.id, { text: p.text, thickness: p.thickness, font: p.font, bitmap });
         map.set(p.id, bitmap);
       } catch (e) {
         err = (e as Error).message;
@@ -85,6 +106,23 @@ async function main() {
       buildPanels(panelLeft, panelRight, store, callbacks);
     },
     onResetCamera: () => store.update((s) => ({ ...s, camera: defaultCamera() })),
+    onImportMedia: async (file: File) => {
+      const id = getSelected(store.get()).id;
+      try {
+        const { name } = await importMediaForPane(id, file);
+        store.update((s) => updateSelected(s, { source: "media", mediaName: name }));
+        renderer.markDirty();
+      } catch (e) {
+        errorEl.textContent = (e as Error).message;
+        errorEl.style.display = "block";
+      }
+    },
+    onRemoveMedia: () => {
+      const id = getSelected(store.get()).id;
+      removeMedia(id);
+      store.update((s) => updateSelected(s, { source: "text", mediaName: "" }));
+      renderer.markDirty();
+    },
     onRecord: async () => {
       const btn = document.querySelector("#p-record") as HTMLButtonElement;
       const durSec = parseFloat((document.querySelector("#p-dur") as HTMLInputElement).value);

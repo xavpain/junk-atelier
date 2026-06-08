@@ -10,6 +10,7 @@ export type AnimDir = 1 | -1;
 export type ColorMode = "solid" | "gradient";
 export type BgStyle = "solid" | "grid" | "dotted";
 export type Axis = "x" | "y" | "z";
+export type PaneSource = "text" | "media";
 
 export interface Bitmap {
   cols: number;
@@ -17,10 +18,21 @@ export interface Bitmap {
   data: Uint8Array; // row-major, 1 = on, 0 = off, length cols*rows
 }
 
+// Sampled colour grid for media panes (image/video/gif).
+export interface ColorBitmap {
+  cols: number;
+  rows: number;
+  data: Uint8ClampedArray; // row-major RGBA, length cols*rows*4
+  dynamic: boolean;        // true for video/gif -> resample every frame
+}
+
 // One text plane in the scene. All content/transform/colour settings are per-pane.
 export interface Pane {
   id: string;
+  source: PaneSource;    // text glyphs or imported media
   text: string;          // may be multiline (stacked bitmap)
+  font: string;          // font-family for text source
+  mediaName: string;     // label of imported media (object URL lives in runtime registry)
   shape: Shape;
   thickness: number;     // morphological passes (>0 dilate, <0 erode)
   position: Vec3;        // world units; translate after obj-rotate, before orbit

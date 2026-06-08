@@ -28,9 +28,11 @@ html, body { margin: 0; height: 100%; background: #0a0a0a; color: #ededed;
   flex-direction: column; gap: 8px; }
 .panel.collapsed .panel-body { display: none; }
 
-button.collapse { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border-radius: 6px;
-  background: #222; color: #ededed; border: 1px solid #333; font-size: 14px; line-height: 1; }
-button.collapse::after { content: "\2013"; }            /* en dash when open */
+.panel button.collapse { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border-radius: 7px;
+  background: #1b1b24; color: #cfcfd6; border: 1px solid #34343f; font-size: 15px; font-weight: 400;
+  line-height: 1; display: grid; place-items: center; }
+.panel button.collapse:hover { background: #24242f; color: #fff; }
+.panel button.collapse::after { content: "\2013"; }      /* en dash when open */
 .panel.collapsed button.collapse::after { content: "+"; }
 
 /* ---- accordion groups ---- */
@@ -73,9 +75,12 @@ input[type="color"] { width: 40px; height: 28px; padding: 2px; background: #0c0c
 input[type="checkbox"] { accent-color: #4ade80; width: 16px; height: 16px; }
 
 .row { display: flex; gap: 8px; align-items: center; }
-.panel button { flex: 1; background: #ededed; color: #0a0a0a; border: 0;
-  border-radius: 6px; padding: 8px; cursor: pointer; font: inherit; font-weight: 600; }
-.panel button:hover { background: #fff; }
-.panel button.danger { background: #3a1a1a; color: #ff9a9a; }
-.panel button.danger:hover { background: #4a2020; }
-.panel button.collapse { font-weight: 400; }
+.panel button { flex: 1; background: #1c1c26; color: #e7e7ee; border: 1px solid #34343f;
+  border-radius: 7px; padding: 8px 10px; cursor: pointer; font: inherit; font-weight: 550;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.04s ease; }
+.panel button:hover { background: #26263340; background: #262633; border-color: #45455a; }
+.panel button:active { transform: translateY(1px); }
+.panel button.accent { background: #16351f; border-color: #2f7d49; color: #b8f5cd; }
+.panel button.accent:hover { background: #1c4528; border-color: #4ade80; }
+.panel button.danger { background: #34181c; border-color: #6e2a30; color: #ff9a9a; }
+.panel button.danger:hover { background: #45202680; background: #452026; border-color: #a13a42; }

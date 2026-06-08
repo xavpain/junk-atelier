@@ -1,36 +1,57 @@
 import type { Bitmap } from "../types";
 import { thresholdAlpha } from "./threshold";
 
-const FONT_FAMILY = "Geist Pixel Square";
+const DEFAULT_FAMILY = "Geist Pixel Square";
 const FONT_PX = 64;        // offscreen render size; higher = more cells
 const MAX_CELLS = 400_000; // safety cap (cols*rows)
 
-let fontReady: Promise<void> | null = null;
+// Catalog shown in the font picker. The bundled pixel font + a set of display
+// fonts; non-system ones are loaded from Google Fonts (see index.html).
+export const FONT_CATALOG = [
+  "Geist Pixel Square",
+  "Press Start 2P",
+  "Silkscreen",
+  "VT323",
+  "Bungee",
+  "Orbitron",
+  "monospace",
+  "serif",
+  "system-ui",
+  "Impact",
+  "Georgia",
+];
+
+const loaded = new Map<string, Promise<void>>();
+
+// Ensures a font family is ready to rasterize. System families resolve instantly.
+export function ensureFont(family: string): Promise<void> {
+  let pr = loaded.get(family);
+  if (!pr) {
+    pr = (async () => {
+      try {
+        await document.fonts.load(`${FONT_PX}px '${family}'`);
+        await document.fonts.ready;
+      } catch { /* fall back to whatever the browser substitutes */ }
+    })();
+    loaded.set(family, pr);
+  }
+  return pr;
+}
 
 export function loadGeistPixel(): Promise<void> {
-  if (!fontReady) {
-    fontReady = (async () => {
-      // Triggers @font-face load; throws if the family never resolves.
-      await document.fonts.load(`${FONT_PX}px '${FONT_FAMILY}'`);
-      await document.fonts.ready;
-      if (!document.fonts.check(`${FONT_PX}px '${FONT_FAMILY}'`)) {
-        throw new Error(`Font '${FONT_FAMILY}' failed to load`);
-      }
-    })();
-  }
-  return fontReady;
+  return ensureFont(DEFAULT_FAMILY);
 }
 
 // Renders text to an offscreen canvas and thresholds it into a Bitmap.
 // thickness applies morphology: >0 dilates (bolder), <0 erodes (thinner).
-// Must be called after loadGeistPixel() resolves.
-export function rasterizeText(text: string, thickness = 0): Bitmap {
+// Call ensureFont(font) first so the glyphs are available.
+export function rasterizeText(text: string, thickness = 0, family = DEFAULT_FAMILY): Bitmap {
   if (text.length === 0) return { cols: 0, rows: 0, data: new Uint8Array(0) };
 
   const lines = text.split("\n");
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  const font = `${FONT_PX}px '${FONT_FAMILY}'`;
+  const font = `${FONT_PX}px '${family}'`;
   ctx.font = font;
 
   let ascent = FONT_PX * 0.8, descent = FONT_PX * 0.2, left = 0, maxWidth = 1;

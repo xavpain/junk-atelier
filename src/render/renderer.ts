@@ -1,13 +1,16 @@
-import type { Bitmap, Scene, Pane, ProjectedQuad } from "../types";
+import type { Bitmap, ColorBitmap, Scene, Pane, ProjectedQuad } from "../types";
 import { projectPlane } from "./projectPlane";
-import { repixelate } from "./repixelate";
-import { drawPaneCells } from "./drawShapes";
+import { repixelate, repixelateColor } from "./repixelate";
+import { drawPaneCells, drawColorCells } from "./drawShapes";
 import { drawBackground } from "./background";
 import { pickPane } from "./hitTest";
+
+export type MediaSampler = (paneId: string) => ColorBitmap | null;
 
 export interface Renderer {
   setScene(scene: Scene): void;
   setBitmaps(map: Map<string, Bitmap>): void;
+  setMediaSampler(fn: MediaSampler): void;
   resize(): void;
   markDirty(): void;
   pickAt(x: number, y: number): string | null; // pane id or null
@@ -19,6 +22,11 @@ const TAU = Math.PI * 2;
 
 // Returns a copy of the pane with float (position) and sway (rotation) motion
 // applied for time ts (ms). Pure; does not mutate the source pane.
+// Pseudo-bitmap carrying only dimensions (data unused by projectPlane).
+function sizeBitmap(cols: number, rows: number): Bitmap {
+  return { cols, rows, data: new Uint8Array(0) };
+}
+
 function animatedPane(p: Pane, ts: number): Pane {
   if (!p.floatEnabled && !p.swayEnabled) return p;
   const position = { ...p.position };
@@ -42,7 +50,18 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let dirty = true;
   let cssW = 0, cssH = 0;
   let lastTs = 0;
+  let mediaSampler: MediaSampler = () => null;
   const scrollPx = new Map<string, number>();
+  const mediaCache = new Map<string, ColorBitmap>();
+
+  // Static images sample once and cache; dynamic (video/gif) resample each call.
+  function getSample(id: string): ColorBitmap | null {
+    const c = mediaCache.get(id);
+    if (c && !c.dynamic) return c;
+    const s = mediaSampler(id);
+    if (s) mediaCache.set(id, s);
+    return s ?? c ?? null;
+  }
 
   // Last-frame projection cache (for hit-testing without reprojecting).
   let lastQuads: ProjectedQuad[] = [];
@@ -64,7 +83,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 
   function frame(ts: number) {
     const animating = !!scene && (scene.background.fade ||
-      scene.panes.some((p) => p.animate || p.floatEnabled || p.swayEnabled));
+      scene.panes.some((p) => p.animate || p.floatEnabled || p.swayEnabled ||
+        (p.source === "media" && mediaCache.get(p.id)?.dynamic)));
     if (scene) {
       const dt = lastTs ? ts - lastTs : 0;
       for (const p of scene.panes) {
@@ -82,10 +102,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground(ctx, scene.background, vp, ts);
 
-      // Apply per-pane motion, project, then sort far->near for painter's blend.
+      // Resolve each pane's source (text bitmap or sampled media grid), apply
+      // motion, project, then sort far->near for painter's blend.
+      const samples = scene.panes.map((p) => (p.source === "media" ? getSample(p.id) : null));
+      const bms = scene.panes.map((p, i) =>
+        p.source === "media"
+          ? (samples[i] ? sizeBitmap(samples[i]!.cols, samples[i]!.rows) : EMPTY_BITMAP)
+          : bmp(p.id));
       const moved = scene.panes.map((p) => animatedPane(p, ts));
-      const quads = moved.map((p) => projectPlane(bmp(p.id), p, scene!.camera, vp));
-      const bms = scene.panes.map((p) => bmp(p.id));
+      const quads = moved.map((p, i) => projectPlane(bms[i], p, scene!.camera, vp));
       const order = quads
         .map((_, i) => i)
         .filter((i) => quads[i].valid)
@@ -94,6 +119,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       for (const i of order) {
         const p = scene.panes[i];
         if (p.card) drawCard(quads[i], p);
+        if (p.source === "media") {
+          if (samples[i]) drawColorCells(ctx, repixelateColor(samples[i]!, quads[i], vp, p.cellSize), p.alpha, p.cellSize);
+          continue;
+        }
         const off = Math.round(scrollPx.get(p.id) ?? 0);
         const scroll = p.animate
           ? p.animMode === "credits" ? { du: 0, dv: off } : { du: off, dv: 0 }
@@ -142,6 +171,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   return {
     setScene(s) { scene = s; dirty = true; },
     setBitmaps(m) { bitmaps = m; dirty = true; },
+    setMediaSampler(fn) { mediaSampler = fn; dirty = true; },
     resize,
     markDirty() { dirty = true; },
     pickAt(x, y) {

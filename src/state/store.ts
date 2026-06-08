@@ -9,7 +9,10 @@ function nextId(): string {
 export function defaultPane(id = nextId(), text = "GEIST"): Pane {
   return {
     id,
+    source: "text",
     text,
+    font: "Geist Pixel Square",
+    mediaName: "",
     shape: "square",
     thickness: 0,
     position: { x: 0, y: 0, z: 0 },
@@ -139,7 +142,16 @@ export function deserializeScene(encoded: string): Scene {
 // Accepts a current Scene or a V1 flat ViewerState and returns a valid Scene.
 export function migrateScene(obj: unknown): Scene {
   const o = obj as Record<string, unknown>;
-  if (o && Array.isArray(o.panes)) return o as unknown as Scene;
+  if (o && Array.isArray(o.panes)) {
+    // Fill any fields added since the link was made.
+    const panes = (o.panes as Pane[]).map((p) => ({ ...defaultPane(p.id), ...p }));
+    return {
+      panes,
+      selectedId: (o.selectedId as string) ?? panes[0]?.id,
+      camera: { ...defaultCamera(), ...(o.camera as Camera) },
+      background: { ...defaultBackground(), ...(o.background as Background) },
+    };
+  }
   // V1 ViewerState -> one-pane Scene.
   if (o && typeof o.text === "string") {
     const pane = defaultPane(nextId(), o.text as string);

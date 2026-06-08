@@ -1,5 +1,5 @@
 import type { Pane, ProjectedQuad } from "../types";
-import type { LiveCell } from "./repixelate";
+import type { LiveCell, ColorCell } from "./repixelate";
 
 // Draws one pane's live cells as a single batched Path2D, filled with the pane's
 // solid colour or a gradient across its quad, honouring per-pane alpha. All
@@ -46,6 +46,24 @@ export function drawPaneCells(
     ? gradientForQuad(ctx, quad, pane.color, pane.color2)
     : pane.color;
   ctx.fill(path);
+  ctx.restore();
+}
+
+// Draws sampled media cells, each filled with its own colour. Per-cell fillStyle
+// (no batching) since colours differ; pane alpha scales the whole layer.
+export function drawColorCells(
+  ctx: CanvasRenderingContext2D,
+  cells: ColorCell[],
+  alpha: number,
+  cellSize: number,
+): void {
+  if (cells.length === 0) return;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  for (const c of cells) {
+    ctx.fillStyle = `rgba(${c.r},${c.g},${c.b},${c.a / 255})`;
+    ctx.fillRect(c.sx, c.sy, cellSize, cellSize);
+  }
   ctx.restore();
 }
 
