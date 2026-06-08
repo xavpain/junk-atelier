@@ -1,5 +1,5 @@
 import "./style.css";
-import type { Bitmap, Scene } from "./types";
+import type { Bitmap, Scene, AspectKey } from "./types";
 import { createStore, defaultScene, defaultCamera, selectPane, updateSelected, getSelected } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
 import { loadGeistPixel, rasterizeText, ensureFont } from "./font/rasterizeText";
@@ -9,6 +9,7 @@ import { buildPanels } from "./ui/panel";
 import { exportPng } from "./export/exportPng";
 import { recordWebm } from "./export/exportWebm";
 import { importMediaForPane, removeMedia, sampleMedia } from "./media/media";
+import { toast, dialog } from "./ui/notify";
 
 async function main() {
   const canvas = document.getElementById("viewer") as HTMLCanvasElement;
@@ -29,12 +30,30 @@ async function main() {
   const renderer = createRenderer(canvas);
   renderer.setMediaSampler(sampleMedia);
 
-  const errorEl = document.createElement("div");
-  errorEl.id = "error";
-  errorEl.style.cssText =
-    "position:fixed;bottom:16px;left:16px;padding:8px 12px;background:#5a1a1a;" +
-    "color:#fff;border-radius:4px;font-size:12px;display:none;z-index:10;";
-  document.body.appendChild(errorEl);
+  // Canvas aspect / format. `free` fills the window; fixed ratios size the canvas
+  // element itself so PNG/WebM exports are exactly that ratio (no letterbox baked in).
+  const ASPECTS: Record<AspectKey, number | null> = {
+    free: null, "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "4:5": 4 / 5, "4:3": 4 / 3,
+  };
+  function applyAspect() {
+    const a = ASPECTS[store.get().aspect];
+    const st = canvas.style;
+    if (a == null) {
+      st.width = "100%"; st.height = "100%"; st.left = "0"; st.top = "0"; st.transform = "";
+      canvas.classList.remove("staged");
+    } else {
+      const maxW = window.innerWidth * 0.96, maxH = window.innerHeight * 0.96;
+      let w = maxW, h = w / a;
+      if (h > maxH) { h = maxH; w = h * a; }
+      st.width = `${Math.round(w)}px`; st.height = `${Math.round(h)}px`;
+      st.left = "50%"; st.top = "50%"; st.transform = "translate(-50%,-50%)";
+      canvas.classList.add("staged");
+    }
+    renderer.resize();
+  }
+
+  let lastErr = "";
+  let lastAspect: AspectKey | "" = "";
 
   // Font loading: Geist is ready (awaited above); other families load on demand
   // and trigger a re-render once available.
@@ -78,8 +97,8 @@ async function main() {
     for (const id of [...cache.keys()]) {
       if (!scene.panes.some((p) => p.id === id)) cache.delete(id);
     }
-    errorEl.textContent = err;
-    errorEl.style.display = err ? "block" : "none";
+    if (err && err !== lastErr) toast(err, "warn");
+    lastErr = err;
     renderer.setBitmaps(map);
   }
 
@@ -89,16 +108,22 @@ async function main() {
   store.subscribe((scene) => {
     syncBitmaps(scene);
     renderer.setScene(scene);
+    if (scene.aspect !== lastAspect) { lastAspect = scene.aspect; applyAspect(); }
     const sig = paneSig(scene);
     if (sig !== panelSig) { panelSig = sig; buildPanels(panelLeft, panelRight, store, callbacks); }
   });
 
   const callbacks = {
-    onExport: () => exportPng(canvas),
+    onExport: () => { exportPng(canvas); toast("PNG saved", "success"); },
     onShare: async () => {
       const url = buildShareUrl(window.location.href, store.get());
       window.history.replaceState(null, "", url);
-      try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Link copied to clipboard", "success");
+      } catch {
+        toast("URL updated (clipboard blocked)", "warn");
+      }
     },
     onReset: () => {
       store.set(defaultScene());
@@ -109,12 +134,12 @@ async function main() {
     onImportMedia: async (file: File) => {
       const id = getSelected(store.get()).id;
       try {
-        const { name } = await importMediaForPane(id, file);
+        const { name, kind } = await importMediaForPane(id, file);
         store.update((s) => updateSelected(s, { source: "media", mediaName: name }));
         renderer.markDirty();
+        toast(`Loaded ${kind}: ${name}`, "success");
       } catch (e) {
-        errorEl.textContent = (e as Error).message;
-        errorEl.style.display = "block";
+        dialog("Import failed", (e as Error).message, "error");
       }
     },
     onRemoveMedia: () => {
@@ -122,6 +147,7 @@ async function main() {
       removeMedia(id);
       store.update((s) => updateSelected(s, { source: "text", mediaName: "" }));
       renderer.markDirty();
+      toast("Media removed", "info");
     },
     onRecord: async () => {
       const btn = document.querySelector("#p-record") as HTMLButtonElement;
@@ -131,9 +157,9 @@ async function main() {
       btn.textContent = "Recording…";
       try {
         await recordWebm(canvas, durSec * 1000);
+        toast("Clip saved", "success");
       } catch (err) {
-        errorEl.textContent = (err as Error).message;
-        errorEl.style.display = "block";
+        dialog("Recording failed", (err as Error).message, "error");
       } finally {
         btn.disabled = false;
         btn.textContent = label;
@@ -144,6 +170,8 @@ async function main() {
   // Initial paint + panel.
   syncBitmaps(store.get());
   renderer.setScene(store.get());
+  lastAspect = store.get().aspect;
+  applyAspect();
   panelSig = paneSig(store.get());
   buildPanels(panelLeft, panelRight, store, callbacks);
 
@@ -151,7 +179,7 @@ async function main() {
     const id = renderer.pickAt(x, y);
     if (id) store.update((s) => selectPane(s, id));
   });
-  window.addEventListener("resize", () => renderer.resize());
+  window.addEventListener("resize", applyAspect);
 }
 
 main();

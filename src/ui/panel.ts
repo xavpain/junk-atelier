@@ -1,4 +1,4 @@
-import type { Shape, AnimMode, BgStyle, ColorMode, Axis, PaneSource, Pane, Background } from "../types";
+import type { Shape, AnimMode, BgStyle, ColorMode, Axis, PaneSource, AspectKey, Pane, Background } from "../types";
 import type { Store } from "../state/store";
 import {
   getSelected, addPane, duplicatePane, deletePane, selectPane, updateSelected,
@@ -48,6 +48,11 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
     btn("Dup", () => store.update(duplicatePane)),
     btn("Del", () => store.update(deletePane), "danger"),
   ));
+
+  // Canvas / format
+  const fmt = group(body, "Canvas", true);
+  selectRow(fmt, "Format", ["free", "9:16", "1:1", "4:5", "16:9", "4:3"], scene.aspect,
+    (v) => store.update((s) => ({ ...s, aspect: v as AspectKey })));
 
   // Background
   const setBg = (patch: Partial<Background>) => store.update((s) => ({ ...s, background: { ...s.background, ...patch } }));

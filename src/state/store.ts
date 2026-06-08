@@ -1,4 +1,4 @@
-import type { Scene, Pane, Camera, Background } from "../types";
+import type { Scene, Pane, Camera, Background, AspectKey } from "../types";
 
 let idCounter = 0;
 function nextId(): string {
@@ -6,7 +6,7 @@ function nextId(): string {
   return `p${idCounter}`;
 }
 
-export function defaultPane(id = nextId(), text = "GEIST"): Pane {
+export function defaultPane(id = nextId(), text = "JUNK"): Pane {
   return {
     id,
     source: "text",
@@ -62,7 +62,7 @@ export function defaultBackground(): Background {
 
 export function defaultScene(): Scene {
   const pane = defaultPane();
-  return { panes: [pane], selectedId: pane.id, camera: defaultCamera(), background: defaultBackground() };
+  return { panes: [pane], selectedId: pane.id, camera: defaultCamera(), background: defaultBackground(), aspect: "free" };
 }
 
 // ---- Pure reducers (use via store.update) ----
@@ -150,6 +150,7 @@ export function migrateScene(obj: unknown): Scene {
       selectedId: (o.selectedId as string) ?? panes[0]?.id,
       camera: { ...defaultCamera(), ...(o.camera as Camera) },
       background: { ...defaultBackground(), ...(o.background as Background) },
+      aspect: (o.aspect as AspectKey) ?? "free",
     };
   }
   // V1 ViewerState -> one-pane Scene.
@@ -171,7 +172,7 @@ export function migrateScene(obj: unknown): Scene {
     const background = defaultBackground();
     if (typeof o.background === "string") background.color = o.background as string;
     if (typeof o.transparent === "boolean") background.transparent = o.transparent as boolean;
-    return { panes: [pane], selectedId: pane.id, camera, background };
+    return { panes: [pane], selectedId: pane.id, camera, background, aspect: "free" };
   }
   return defaultScene();
 }

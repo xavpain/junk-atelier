@@ -11,6 +11,7 @@ export type ColorMode = "solid" | "gradient";
 export type BgStyle = "solid" | "grid" | "dotted";
 export type Axis = "x" | "y" | "z";
 export type PaneSource = "text" | "media";
+export type AspectKey = "free" | "16:9" | "9:16" | "1:1" | "4:5" | "4:3";
 
 export interface Bitmap {
   cols: number;
@@ -92,6 +93,7 @@ export interface Scene {
   selectedId: string;
   camera: Camera;
   background: Background;
+  aspect: AspectKey;     // canvas/stage aspect ratio (free = fill window)
 }
 
 export interface ProjectedQuad {
