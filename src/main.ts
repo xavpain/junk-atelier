@@ -1,17 +1,18 @@
 import "./style.css";
 import type { Bitmap, Scene } from "./types";
-import { createStore, defaultScene, selectPane } from "./state/store";
+import { createStore, defaultScene, defaultCamera, selectPane } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
 import { loadGeistPixel, rasterizeText } from "./font/rasterizeText";
 import { createRenderer } from "./render/renderer";
 import { attachControls } from "./interaction/controls";
-import { buildPanel } from "./ui/panel";
+import { buildPanels } from "./ui/panel";
 import { exportPng } from "./export/exportPng";
 import { recordWebm } from "./export/exportWebm";
 
 async function main() {
   const canvas = document.getElementById("viewer") as HTMLCanvasElement;
-  const panelRoot = document.getElementById("panel") as HTMLElement;
+  const panelLeft = document.getElementById("panel-left") as HTMLElement;
+  const panelRight = document.getElementById("panel-right") as HTMLElement;
 
   const store = createStore(defaultScene());
   applyHashToStore(store);
@@ -19,7 +20,7 @@ async function main() {
   try {
     await loadGeistPixel();
   } catch (err) {
-    panelRoot.innerHTML = `<p>Failed to load Geist Pixel font.<br>${(err as Error).message}</p>
+    panelLeft.innerHTML = `<p>Failed to load Geist Pixel font.<br>${(err as Error).message}</p>
       <button onclick="location.reload()">Retry</button>`;
     return;
   }
@@ -68,7 +69,7 @@ async function main() {
     syncBitmaps(scene);
     renderer.setScene(scene);
     const sig = paneSig(scene);
-    if (sig !== panelSig) { panelSig = sig; buildPanel(panelRoot, store, callbacks); }
+    if (sig !== panelSig) { panelSig = sig; buildPanels(panelLeft, panelRight, store, callbacks); }
   });
 
   const callbacks = {
@@ -81,11 +82,12 @@ async function main() {
     onReset: () => {
       store.set(defaultScene());
       panelSig = ""; // force rebuild
-      buildPanel(panelRoot, store, callbacks);
+      buildPanels(panelLeft, panelRight, store, callbacks);
     },
+    onResetCamera: () => store.update((s) => ({ ...s, camera: defaultCamera() })),
     onRecord: async () => {
-      const btn = panelRoot.querySelector("#p-record") as HTMLButtonElement;
-      const durSec = parseFloat((panelRoot.querySelector("#p-dur") as HTMLInputElement).value);
+      const btn = document.querySelector("#p-record") as HTMLButtonElement;
+      const durSec = parseFloat((document.querySelector("#p-dur") as HTMLInputElement).value);
       const label = btn.textContent;
       btn.disabled = true;
       btn.textContent = "Recording…";
@@ -105,7 +107,7 @@ async function main() {
   syncBitmaps(store.get());
   renderer.setScene(store.get());
   panelSig = paneSig(store.get());
-  buildPanel(panelRoot, store, callbacks);
+  buildPanels(panelLeft, panelRight, store, callbacks);
 
   attachControls(canvas, store, (x, y) => {
     const id = renderer.pickAt(x, y);

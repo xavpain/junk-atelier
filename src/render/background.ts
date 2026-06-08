@@ -14,7 +14,7 @@ export function drawBackground(
 
   let base = bg.color;
   if (bg.fade) {
-    const t = (Math.sin(ts * 0.0004) + 1) / 2;
+    const t = (Math.sin(ts * 0.001 * Math.PI * bg.fadeSpeed) + 1) / 2;
     base = lerpHex(bg.color, bg.fadeColor, t);
   }
 
@@ -32,12 +32,13 @@ export function drawBackground(
     for (let y = 0.5; y <= height; y += step) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
     ctx.stroke();
   } else if (bg.style === "dotted") {
+    const rad = Math.max(0.5, bg.dotRadius);
     ctx.fillStyle = bg.accent;
     ctx.beginPath();
     for (let y = step / 2; y < height; y += step) {
       for (let x = step / 2; x < width; x += step) {
-        ctx.moveTo(x + 1, y);
-        ctx.arc(x, y, 1, 0, Math.PI * 2);
+        ctx.moveTo(x + rad, y);
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
       }
     }
     ctx.fill();

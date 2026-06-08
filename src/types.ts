@@ -9,6 +9,7 @@ export type AnimMode = "credits" | "marquee";
 export type AnimDir = 1 | -1;
 export type ColorMode = "solid" | "gradient";
 export type BgStyle = "solid" | "grid" | "dotted";
+export type Axis = "x" | "y" | "z";
 
 export interface Bitmap {
   cols: number;
@@ -31,10 +32,26 @@ export interface Pane {
   color: string;         // hex (solid, or gradient start)
   color2: string;        // hex (gradient end)
   alpha: number;         // 0..1
+  // Card backing: a filled quad behind the cells so the pane reads as a surface
+  // that occludes the background (dots/grid sit behind it).
+  card: boolean;
+  cardColor: string;
+  cardAlpha: number;
+  // Text scroll.
   animate: boolean;
   animMode: AnimMode;
   animDir: AnimDir;
   animSpeed: number;     // source px / second
+  // Float: sinusoidal position oscillation (wobble / floating).
+  floatEnabled: boolean;
+  floatAxis: Axis;
+  floatAmp: number;      // world units
+  floatSpeed: number;    // cycles / second
+  // Sway: sinusoidal rotation oscillation.
+  swayEnabled: boolean;
+  swayAxis: Axis;
+  swayAmp: number;       // radians
+  swaySpeed: number;     // cycles / second
 }
 
 // Global camera shared by the whole scene.
@@ -52,8 +69,10 @@ export interface Background {
   transparent: boolean;  // solid only; PNG keeps alpha
   accent: string;        // grid line / dot color
   spacing: number;       // px between grid lines / dots
+  dotRadius: number;     // dot radius (dotted style)
   fade: boolean;         // animated color drift
   fadeColor: string;     // 2nd color the fade drifts toward
+  fadeSpeed: number;     // fade cycles / second
 }
 
 export interface Scene {

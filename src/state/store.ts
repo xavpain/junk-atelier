@@ -21,10 +21,21 @@ export function defaultPane(id = nextId(), text = "GEIST"): Pane {
     color: "#ededed",
     color2: "#5a9bd4",
     alpha: 1,
+    card: false,
+    cardColor: "#141420",
+    cardAlpha: 0.85,
     animate: false,
     animMode: "credits",
     animDir: 1,
     animSpeed: 60,
+    floatEnabled: false,
+    floatAxis: "z",
+    floatAmp: 2,
+    floatSpeed: 0.4,
+    swayEnabled: false,
+    swayAxis: "y",
+    swayAmp: 0.2,
+    swaySpeed: 0.3,
   };
 }
 
@@ -39,8 +50,10 @@ export function defaultBackground(): Background {
     transparent: true,
     accent: "#1a1a22",
     spacing: 16,
+    dotRadius: 1,
     fade: false,
     fadeColor: "#101018",
+    fadeSpeed: 0.2,
   };
 }
 

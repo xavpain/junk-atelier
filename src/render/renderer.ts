@@ -1,4 +1,4 @@
-import type { Bitmap, Scene, ProjectedQuad } from "../types";
+import type { Bitmap, Scene, Pane, ProjectedQuad } from "../types";
 import { projectPlane } from "./projectPlane";
 import { repixelate } from "./repixelate";
 import { drawPaneCells } from "./drawShapes";
@@ -15,6 +15,22 @@ export interface Renderer {
 
 const EMPTY_BITMAP: Bitmap = { cols: 0, rows: 0, data: new Uint8Array(0) };
 const HIGHLIGHT = "#4ade80";
+const TAU = Math.PI * 2;
+
+// Returns a copy of the pane with float (position) and sway (rotation) motion
+// applied for time ts (ms). Pure; does not mutate the source pane.
+function animatedPane(p: Pane, ts: number): Pane {
+  if (!p.floatEnabled && !p.swayEnabled) return p;
+  const position = { ...p.position };
+  const rotation = { ...p.rotation };
+  if (p.floatEnabled) {
+    position[p.floatAxis] += p.floatAmp * Math.sin(ts * 0.001 * TAU * p.floatSpeed);
+  }
+  if (p.swayEnabled) {
+    rotation[p.swayAxis] += p.swayAmp * Math.sin(ts * 0.001 * TAU * p.swaySpeed);
+  }
+  return { ...p, position, rotation };
+}
 
 // Render at CSS-pixel resolution (device px == CSS px) to keep the blocky grid.
 const DPR = 1;
@@ -47,7 +63,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   }
 
   function frame(ts: number) {
-    const animating = !!scene && (scene.background.fade || scene.panes.some((p) => p.animate));
+    const animating = !!scene && (scene.background.fade ||
+      scene.panes.some((p) => p.animate || p.floatEnabled || p.swayEnabled));
     if (scene) {
       const dt = lastTs ? ts - lastTs : 0;
       for (const p of scene.panes) {
@@ -65,8 +82,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground(ctx, scene.background, vp, ts);
 
-      // Project all panes, then sort indices far->near for painter's blending.
-      const quads = scene.panes.map((p) => projectPlane(bmp(p.id), p, scene!.camera, vp));
+      // Apply per-pane motion, project, then sort far->near for painter's blend.
+      const moved = scene.panes.map((p) => animatedPane(p, ts));
+      const quads = moved.map((p) => projectPlane(bmp(p.id), p, scene!.camera, vp));
       const bms = scene.panes.map((p) => bmp(p.id));
       const order = quads
         .map((_, i) => i)
@@ -75,6 +93,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
 
       for (const i of order) {
         const p = scene.panes[i];
+        if (p.card) drawCard(quads[i], p);
         const off = Math.round(scrollPx.get(p.id) ?? 0);
         const scroll = p.animate
           ? p.animMode === "credits" ? { du: 0, dv: off } : { du: off, dv: 0 }
@@ -90,6 +109,18 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       lastQuads = quads; lastBitmaps = bms; lastOrder = order;
     }
     requestAnimationFrame(frame);
+  }
+
+  function drawCard(q: ProjectedQuad, p: Pane) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.cardAlpha));
+    ctx.fillStyle = p.cardColor;
+    ctx.beginPath();
+    ctx.moveTo(q.corners[0].x, q.corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q.corners[i].x, q.corners[i].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   function outline(q: ProjectedQuad) {
