@@ -3,11 +3,14 @@ import { mat3MulVec } from "../math/mat3";
 
 export interface LiveCell { sx: number; sy: number; } // top-left screen px
 
+// scroll offsets the sampled source coord and wraps modulo the bitmap, so the
+// content loops continuously through the static plane (teleprompter effect).
 export function repixelate(
   bitmap: Bitmap,
   quad: ProjectedQuad,
   viewport: { width: number; height: number },
   cellSize: number,
+  scroll?: { du: number; dv: number },
 ): LiveCell[] {
   if (!quad.valid || bitmap.cols === 0 || bitmap.rows === 0) return [];
 
@@ -30,8 +33,15 @@ export function repixelate(
       const cy = gy * cellSize + cellSize / 2;
       const [hx, hy, hw] = mat3MulVec(quad.inverse, cx, cy);
       const u = hx / hw, v = hy / hw;
-      if (u < 0 || v < 0 || u >= cols || v >= rows) continue;
-      const col = Math.floor(u), row = Math.floor(v);
+      let col: number, row: number;
+      if (scroll) {
+        col = (((Math.floor(u) + scroll.du) % cols) + cols) % cols;
+        row = (((Math.floor(v) + scroll.dv) % rows) + rows) % rows;
+        if (u < 0 || v < 0 || u >= cols || v >= rows) continue;
+      } else {
+        if (u < 0 || v < 0 || u >= cols || v >= rows) continue;
+        col = Math.floor(u); row = Math.floor(v);
+      }
       if (data[row * cols + col] === 1) {
         cells.push({ sx: gx * cellSize, sy: gy * cellSize });
       }

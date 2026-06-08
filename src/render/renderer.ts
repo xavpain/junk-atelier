@@ -21,6 +21,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let state: ViewerState | null = null;
   let dirty = true;
   let cssW = 0, cssH = 0;
+  let scrollPx = 0;   // accumulated source-px offset while animating
+  let lastTs = 0;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -31,12 +33,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     dirty = true;
   }
 
-  function frame() {
+  function frame(ts: number) {
+    if (state?.animate) {
+      const dt = lastTs ? ts - lastTs : 0;
+      scrollPx += (state.animSpeed * dt) / 1000;
+      dirty = true;
+    }
+    lastTs = ts;
+
     if (dirty && state) {
       dirty = false;
       const quad = projectPlane(bitmap, state, { width: cssW, height: cssH });
-      const cells = repixelate(bitmap, quad, { width: cssW, height: cssH }, state.cellSize);
-      drawCells(ctx, cells, state.cellSize, state.shape);
+      const off = Math.round(scrollPx);
+      const scroll = state.animate
+        ? state.animMode === "credits"
+          ? { du: 0, dv: off }
+          : { du: off, dv: 0 }
+        : undefined;
+      const cells = repixelate(bitmap, quad, { width: cssW, height: cssH }, state.cellSize, scroll);
+      drawCells(ctx, cells, state.cellSize, state.shape, state.background, state.transparent);
     }
     requestAnimationFrame(frame);
   }

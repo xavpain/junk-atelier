@@ -22,7 +22,15 @@ export interface ViewerState {
   fov: number;
   shape: Shape;
   cellSize: number;
+  background: string;   // CSS color used when transparent is false
+  transparent: boolean; // true = clear canvas (no fill), PNG keeps alpha
+  thickness: number;    // morphological passes: >0 dilate (bolder), <0 erode (thinner)
+  animate: boolean;     // scroll the text content through the plane
+  animMode: AnimMode;   // credits = vertical scroll, marquee = horizontal
+  animSpeed: number;    // source px per second
 }
+
+export type AnimMode = "credits" | "marquee";
 
 export interface ProjectedQuad {
   corners: [Vec2, Vec2, Vec2, Vec2]; // TL, TR, BR, BL in screen px

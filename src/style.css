@@ -16,9 +16,14 @@ html, body { margin: 0; height: 100%; background: #0a0a0a; color: #ededed;
   backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 12px;
   font-size: 12px; }
 #panel label { display: flex; flex-direction: column; gap: 4px; }
-#panel input[type="text"], #panel select { background: #0a0a0a; color: #ededed;
+#panel input[type="text"], #panel textarea, #panel select { background: #0a0a0a; color: #ededed;
   border: 1px solid #333; border-radius: 4px; padding: 6px; font: inherit; }
+#panel textarea { resize: vertical; width: 100%; }
 #panel input[type="range"] { width: 100%; }
-#panel .row { display: flex; gap: 8px; }
+#panel input[type="color"] { width: 48px; height: 32px; padding: 2px; background: #0a0a0a;
+  border: 1px solid #333; border-radius: 4px; cursor: pointer; }
+#panel label.inline { flex-direction: row; align-items: center; gap: 6px; }
+#panel label.inline input { width: auto; }
+#panel .row { display: flex; gap: 8px; align-items: center; }
 #panel button { flex: 1; background: #ededed; color: #0a0a0a; border: 0;
   border-radius: 4px; padding: 8px; cursor: pointer; font: inherit; }

@@ -11,6 +11,12 @@ export function defaultState(): ViewerState {
     fov: Math.PI / 3,
     shape: "square",
     cellSize: 8,
+    background: "#0a0a0a",
+    transparent: true,
+    thickness: 0,
+    animate: false,
+    animMode: "credits",
+    animSpeed: 60,
   };
 }
 
