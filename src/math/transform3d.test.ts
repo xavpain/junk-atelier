@@ -1,5 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { rotateX, rotateY, rotateZ } from "./transform3d";
+import { rotateX, rotateY, rotateZ, translate, shear } from "./transform3d";
+
+describe("translate/shear", () => {
+  it("translate adds component-wise", () => {
+    const p = translate({ x: 1, y: 2, z: 3 }, { x: 10, y: 20, z: 30 });
+    expect(p).toEqual({ x: 11, y: 22, z: 33 });
+  });
+
+  it("shear kx shifts x by y, leaves y", () => {
+    const p = shear({ x: 0, y: 2, z: 0 }, 0.5, 0);
+    expect(p.x).toBeCloseTo(1);
+    expect(p.y).toBeCloseTo(2);
+  });
+
+  it("shear ky shifts y by x", () => {
+    const p = shear({ x: 4, y: 0, z: 0 }, 0, 0.25);
+    expect(p.y).toBeCloseTo(1);
+  });
+});
 
 describe("rotations", () => {
   const HALF_PI = Math.PI / 2;

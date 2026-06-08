@@ -1,28 +1,37 @@
-import type { Bitmap, ViewerState } from "../types";
+import type { Bitmap, Scene, ProjectedQuad } from "../types";
 import { projectPlane } from "./projectPlane";
 import { repixelate } from "./repixelate";
-import { drawCells } from "./drawShapes";
+import { drawPaneCells } from "./drawShapes";
+import { drawBackground } from "./background";
+import { pickPane } from "./hitTest";
 
 export interface Renderer {
-  setBitmap(bmp: Bitmap): void;
-  setState(state: ViewerState): void;
+  setScene(scene: Scene): void;
+  setBitmaps(map: Map<string, Bitmap>): void;
   resize(): void;
   markDirty(): void;
+  pickAt(x: number, y: number): string | null; // pane id or null
 }
 
-// Render at CSS-pixel resolution (device px == CSS px). The fixed pixel grid
-// is intentionally blocky, so we do not upscale for high-DPR displays; this
-// keeps repixelate cells and the ImageData buffer in one coordinate space.
+const EMPTY_BITMAP: Bitmap = { cols: 0, rows: 0, data: new Uint8Array(0) };
+const HIGHLIGHT = "#4ade80";
+
+// Render at CSS-pixel resolution (device px == CSS px) to keep the blocky grid.
 const DPR = 1;
 
 export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const ctx = canvas.getContext("2d")!;
-  let bitmap: Bitmap = { cols: 0, rows: 0, data: new Uint8Array(0) };
-  let state: ViewerState | null = null;
+  let scene: Scene | null = null;
+  let bitmaps = new Map<string, Bitmap>();
   let dirty = true;
   let cssW = 0, cssH = 0;
-  let scrollPx = 0;   // accumulated source-px offset while animating
   let lastTs = 0;
+  const scrollPx = new Map<string, number>();
+
+  // Last-frame projection cache (for hit-testing without reprojecting).
+  let lastQuads: ProjectedQuad[] = [];
+  let lastBitmaps: Bitmap[] = [];
+  let lastOrder: number[] = [];
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -33,36 +42,81 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     dirty = true;
   }
 
+  function bmp(id: string): Bitmap {
+    return bitmaps.get(id) ?? EMPTY_BITMAP;
+  }
+
   function frame(ts: number) {
-    if (state?.animate) {
+    const animating = !!scene && (scene.background.fade || scene.panes.some((p) => p.animate));
+    if (scene) {
       const dt = lastTs ? ts - lastTs : 0;
-      scrollPx += (state.animSpeed * dt) / 1000;
-      dirty = true;
+      for (const p of scene.panes) {
+        if (p.animate) {
+          scrollPx.set(p.id, (scrollPx.get(p.id) ?? 0) + (p.animSpeed * p.animDir * dt) / 1000);
+        }
+      }
+      if (animating) dirty = true;
     }
     lastTs = ts;
 
-    if (dirty && state) {
+    if (dirty && scene) {
       dirty = false;
-      const quad = projectPlane(bitmap, state, { width: cssW, height: cssH });
-      const off = Math.round(scrollPx);
-      const scroll = state.animate
-        ? state.animMode === "credits"
-          ? { du: 0, dv: off }
-          : { du: off, dv: 0 }
-        : undefined;
-      const cells = repixelate(bitmap, quad, { width: cssW, height: cssH }, state.cellSize, scroll);
-      drawCells(ctx, cells, state.cellSize, state.shape, state.background, state.transparent);
+      const vp = { width: cssW, height: cssH };
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground(ctx, scene.background, vp, ts);
+
+      // Project all panes, then sort indices far->near for painter's blending.
+      const quads = scene.panes.map((p) => projectPlane(bmp(p.id), p, scene!.camera, vp));
+      const bms = scene.panes.map((p) => bmp(p.id));
+      const order = quads
+        .map((_, i) => i)
+        .filter((i) => quads[i].valid)
+        .sort((a, b) => quads[b].meanDepth - quads[a].meanDepth);
+
+      for (const i of order) {
+        const p = scene.panes[i];
+        const off = Math.round(scrollPx.get(p.id) ?? 0);
+        const scroll = p.animate
+          ? p.animMode === "credits" ? { du: 0, dv: off } : { du: off, dv: 0 }
+          : undefined;
+        const cells = repixelate(bms[i], quads[i], vp, p.cellSize, scroll);
+        drawPaneCells(ctx, cells, p, quads[i], p.cellSize);
+      }
+
+      // Selection outline on top.
+      const sel = scene.panes.findIndex((p) => p.id === scene!.selectedId);
+      if (sel >= 0 && quads[sel].valid) outline(quads[sel]);
+
+      lastQuads = quads; lastBitmaps = bms; lastOrder = order;
     }
     requestAnimationFrame(frame);
+  }
+
+  function outline(q: ProjectedQuad) {
+    ctx.save();
+    ctx.strokeStyle = HIGHLIGHT;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(q.corners[0].x, q.corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q.corners[i].x, q.corners[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
   }
 
   resize();
   requestAnimationFrame(frame);
 
   return {
-    setBitmap(b) { bitmap = b; dirty = true; },
-    setState(s) { state = s; dirty = true; },
+    setScene(s) { scene = s; dirty = true; },
+    setBitmaps(m) { bitmaps = m; dirty = true; },
     resize,
     markDirty() { dirty = true; },
+    pickAt(x, y) {
+      if (!scene) return null;
+      const idx = pickPane(lastOrder, lastQuads, lastBitmaps, x, y);
+      return idx >= 0 ? scene.panes[idx].id : null;
+    },
   };
 }

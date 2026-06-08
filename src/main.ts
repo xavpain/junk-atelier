@@ -1,5 +1,6 @@
 import "./style.css";
-import { createStore, defaultState } from "./state/store";
+import type { Bitmap, Scene } from "./types";
+import { createStore, defaultScene, selectPane } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
 import { loadGeistPixel, rasterizeText } from "./font/rasterizeText";
 import { createRenderer } from "./render/renderer";
@@ -12,7 +13,7 @@ async function main() {
   const canvas = document.getElementById("viewer") as HTMLCanvasElement;
   const panelRoot = document.getElementById("panel") as HTMLElement;
 
-  const store = createStore(defaultState());
+  const store = createStore(defaultScene());
   applyHashToStore(store);
 
   try {
@@ -32,25 +33,43 @@ async function main() {
     "color:#fff;border-radius:4px;font-size:12px;display:none;z-index:10;";
   document.body.appendChild(errorEl);
 
-  // Re-rasterize only when text or thickness changes; null sentinel forces the first pass.
-  let lastText: string | null = null;
-  let lastThickness: number | null = null;
-  function sync() {
-    const s = store.get();
-    if (s.text !== lastText || s.thickness !== lastThickness) {
-      lastText = s.text;
-      lastThickness = s.thickness;
+  // Per-pane bitmap cache; re-rasterize a pane only when its text/thickness change.
+  const cache = new Map<string, { text: string; thickness: number; bitmap: Bitmap }>();
+  function syncBitmaps(scene: Scene) {
+    const map = new Map<string, Bitmap>();
+    let err = "";
+    for (const p of scene.panes) {
+      const hit = cache.get(p.id);
+      if (hit && hit.text === p.text && hit.thickness === p.thickness) {
+        map.set(p.id, hit.bitmap);
+        continue;
+      }
       try {
-        renderer.setBitmap(rasterizeText(s.text, s.thickness));
-        errorEl.style.display = "none";
-      } catch (err) {
-        errorEl.textContent = (err as Error).message;
-        errorEl.style.display = "block";
+        const bitmap = rasterizeText(p.text, p.thickness);
+        cache.set(p.id, { text: p.text, thickness: p.thickness, bitmap });
+        map.set(p.id, bitmap);
+      } catch (e) {
+        err = (e as Error).message;
+        map.set(p.id, { cols: 0, rows: 0, data: new Uint8Array(0) });
       }
     }
-    renderer.setState(s);
+    for (const id of [...cache.keys()]) {
+      if (!scene.panes.some((p) => p.id === id)) cache.delete(id);
+    }
+    errorEl.textContent = err;
+    errorEl.style.display = err ? "block" : "none";
+    renderer.setBitmaps(map);
   }
-  store.subscribe(sync);
+
+  let panelSig = "";
+  const paneSig = (s: Scene) => `${s.selectedId}|${s.panes.map((p) => p.id).join(",")}`;
+
+  store.subscribe((scene) => {
+    syncBitmaps(scene);
+    renderer.setScene(scene);
+    const sig = paneSig(scene);
+    if (sig !== panelSig) { panelSig = sig; buildPanel(panelRoot, store, callbacks); }
+  });
 
   const callbacks = {
     onExport: () => exportPng(canvas),
@@ -60,13 +79,13 @@ async function main() {
       try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
     },
     onReset: () => {
-      store.set(defaultState());
+      store.set(defaultScene());
+      panelSig = ""; // force rebuild
       buildPanel(panelRoot, store, callbacks);
     },
     onRecord: async () => {
       const btn = panelRoot.querySelector("#p-record") as HTMLButtonElement;
       const durSec = parseFloat((panelRoot.querySelector("#p-dur") as HTMLInputElement).value);
-      if (!store.get().animate) store.set({ animate: true }); // ensure motion to capture
       const label = btn.textContent;
       btn.disabled = true;
       btn.textContent = "Recording…";
@@ -82,10 +101,17 @@ async function main() {
     },
   };
 
-  sync();
-  attachControls(canvas, store);
-  window.addEventListener("resize", () => renderer.resize());
+  // Initial paint + panel.
+  syncBitmaps(store.get());
+  renderer.setScene(store.get());
+  panelSig = paneSig(store.get());
   buildPanel(panelRoot, store, callbacks);
+
+  attachControls(canvas, store, (x, y) => {
+    const id = renderer.pickAt(x, y);
+    if (id) store.update((s) => selectPane(s, id));
+  });
+  window.addEventListener("resize", () => renderer.resize());
 }
 
 main();

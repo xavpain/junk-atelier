@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { buildShareUrl } from "./shareLink";
-import { defaultState, deserializeState } from "../state/store";
+import { defaultScene, deserializeScene } from "../state/store";
 
 describe("buildShareUrl", () => {
-  it("encodes state into the URL hash and round-trips", () => {
-    const s = defaultState();
-    s.text = "share me";
+  it("encodes a scene into the URL hash and round-trips", () => {
+    const s = defaultScene();
+    s.panes[0].text = "share me";
     const url = buildShareUrl("https://example.com/app", s);
     expect(url).toContain("#");
     const hash = url.split("#")[1];
-    expect(deserializeState(hash).text).toBe("share me");
+    expect(deserializeScene(hash).panes[0].text).toBe("share me");
   });
 });

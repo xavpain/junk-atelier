@@ -20,6 +20,15 @@ export function rotateZ(p: Vec3, a: number): Vec3 {
   return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
 }
 
+export function translate(p: Vec3, t: Vec3): Vec3 {
+  return { x: p.x + t.x, y: p.y + t.y, z: p.z + t.z };
+}
+
+// In-plane shear (parallelogram/italic). kx shifts x by y, ky shifts y by x.
+export function shear(p: Vec3, kx: number, ky: number): Vec3 {
+  return { x: p.x + kx * p.y, y: p.y + ky * p.x, z: p.z };
+}
+
 export interface ProjectParams {
   fov: number;     // radians
   zoom: number;    // focal-length multiplier

@@ -1,44 +1,26 @@
-import type { Shape } from "../types";
+import type { Pane, ProjectedQuad } from "../types";
 import type { LiveCell } from "./repixelate";
-import { paintSquares } from "./paintSquares";
 
-const COLOR: [number, number, number, number] = [237, 237, 237, 255]; // #ededed
-const COLOR_CSS = "#ededed";
-
-// Draws all live cells in one batched operation. Square uses the ImageData
-// fast-path; other shapes batch into a single Path2D.
-export function drawCells(
+// Draws one pane's live cells as a single batched Path2D, filled with the pane's
+// solid colour or a gradient across its quad, honouring per-pane alpha. All
+// shapes go through Path2D so overlapping panes composite (alpha-blend) correctly.
+export function drawPaneCells(
   ctx: CanvasRenderingContext2D,
   cells: LiveCell[],
+  pane: Pane,
+  quad: ProjectedQuad,
   cellSize: number,
-  shape: Shape,
-  background: string,
-  transparent: boolean,
 ): void {
-  const { width, height } = ctx.canvas;
-  ctx.clearRect(0, 0, width, height);
-  if (!transparent) {
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
-  }
-
-  if (shape === "square") {
-    // putImageData overwrites the region, so the bg fill above would be lost;
-    // bake the background into the buffer before painting cells.
-    const img = ctx.createImageData(width, height);
-    if (!transparent) fillRgba(img.data, hexToRgba(background));
-    paintSquares(img.data, width, height, cells, cellSize, COLOR);
-    ctx.putImageData(img, 0, 0);
-    return;
-  }
-
   if (cells.length === 0) return;
 
   const path = new Path2D();
   const r = cellSize / 2;
   for (const { sx, sy } of cells) {
     const cx = sx + r, cy = sy + r;
-    switch (shape) {
+    switch (pane.shape) {
+      case "square":
+        path.rect(sx, sy, cellSize, cellSize);
+        break;
       case "circle":
         path.moveTo(cx + r, cy);
         path.arc(cx, cy, r, 0, Math.PI * 2);
@@ -57,20 +39,29 @@ export function drawCells(
         break;
     }
   }
-  ctx.fillStyle = COLOR_CSS;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, pane.alpha));
+  ctx.fillStyle = pane.colorMode === "gradient"
+    ? gradientForQuad(ctx, quad, pane.color, pane.color2)
+    : pane.color;
   ctx.fill(path);
+  ctx.restore();
 }
 
-function hexToRgba(hex: string): [number, number, number, number] {
-  const h = hex.replace("#", "");
-  const n = h.length === 3
-    ? h.split("").map((c) => c + c).join("")
-    : h.padEnd(6, "0").slice(0, 6);
-  return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16), 255];
-}
-
-function fillRgba(data: Uint8ClampedArray, [r, g, b, a]: [number, number, number, number]): void {
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = a;
+function gradientForQuad(
+  ctx: CanvasRenderingContext2D,
+  quad: ProjectedQuad,
+  from: string,
+  to: string,
+): CanvasGradient {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of quad.corners) {
+    minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+    minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y);
   }
+  const g = ctx.createLinearGradient(minX, minY, maxX, maxY);
+  g.addColorStop(0, from);
+  g.addColorStop(1, to);
+  return g;
 }

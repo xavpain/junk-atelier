@@ -15,7 +15,7 @@ describe("repixelate", () => {
     ];
     const homography = solveHomography(src, dst);
     const quad: ProjectedQuad = {
-      corners: dst, homography, inverse: mat3Inverse(homography), valid: true,
+      corners: dst, homography, inverse: mat3Inverse(homography), meanDepth: 1, valid: true,
     };
     const cells = repixelate(bmp, quad, { width: 20, height: 20 }, 10);
     const set = cells.map((c) => `${c.sx},${c.sy}`).sort();
@@ -28,6 +28,7 @@ describe("repixelate", () => {
       corners: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
       homography: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       inverse: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      meanDepth: Infinity,
       valid: false,
     };
     expect(repixelate(bmp, quad, { width: 20, height: 20 }, 10)).toEqual([]);
