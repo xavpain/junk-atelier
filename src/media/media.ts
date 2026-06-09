@@ -9,6 +9,7 @@ interface Entry {
 }
 
 const MAX_DIM = 320; // longest sampled edge; higher = finer (near 1:1) detail
+const MAX_FILE_MB = 50; // reject heavier imports — keeps it snappy, all client-side
 
 const registry = new Map<string, Entry>();
 const sampler = document.createElement("canvas");
@@ -17,6 +18,9 @@ const sctx = sampler.getContext("2d", { willReadFrequently: true })!;
 // Imports a file as the media source for a pane. Returns once dimensions are
 // known. Everything stays client-side via an object URL — nothing is uploaded.
 export function importMediaForPane(paneId: string, file: File): Promise<{ name: string; kind: Kind }> {
+  if (file.size > MAX_FILE_MB * 1024 * 1024) {
+    return Promise.reject(new Error(`file's too chunky (${(file.size / 1048576).toFixed(0)} MB). max is ${MAX_FILE_MB} MB — pick a smaller one.`));
+  }
   removeMedia(paneId);
   const url = URL.createObjectURL(file);
   const kind: Kind = file.type === "image/gif" ? "gif" : file.type.startsWith("video") ? "video" : "image";
