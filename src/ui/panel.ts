@@ -33,12 +33,24 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
 
   const body = panelShell(root, "Scene", () => { leftCollapsed = !leftCollapsed; root.classList.toggle("collapsed", leftCollapsed); });
 
+  // Layout: a scroll area (Panes + Canvas + Background) above a pinned footer
+  // (Camera + Export) so export/camera never scroll out of reach as panes grow.
+  body.classList.add("has-foot");
+  const scroll = el("div", "panel-scroll");
+  const foot = el("div", "panel-foot");
+  body.append(scroll, foot);
+
   // Panes list
-  const panes = group(body, "Panes", true);
+  const panes = group(scroll, "Panes", true);
   const list = el("div", "pane-list");
   scene.panes.forEach((p) => {
     const row = el("div", "pane-row" + (p.id === scene.selectedId ? " sel" : ""));
-    row.textContent = (p.text.split("\n")[0] || "(empty)").slice(0, 20);
+    const isMedia = p.source === "media";
+    const ico = el("span", "pane-ico");
+    ico.textContent = isMedia ? "■" : "T"; // font-safe markers (emoji glyphs tofu on some systems)
+    const label = el("span", "pane-label");
+    label.textContent = (isMedia ? (p.mediaName || "media") : (p.text.split("\n")[0] || "(empty)")).slice(0, 18);
+    row.append(ico, label);
     row.addEventListener("click", () => store.update((s) => selectPane(s, p.id)));
     list.append(row);
   });
@@ -50,13 +62,13 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   ));
 
   // Canvas / format
-  const fmt = group(body, "Canvas", true);
+  const fmt = group(scroll, "Canvas", true);
   selectRow(fmt, "Format", ["free", "9:16", "1:1", "4:5", "16:9", "4:3"], scene.aspect,
     (v) => store.update((s) => ({ ...s, aspect: v as AspectKey })));
 
   // Background
   const setBg = (patch: Partial<Background>) => store.update((s) => ({ ...s, background: { ...s.background, ...patch } }));
-  const bg = group(body, "Background", true);
+  const bg = group(scroll, "Background", true);
   selectRow(bg, "Style", ["solid", "grid", "dotted"], scene.background.style, (v) => setBg({ style: v as BgStyle }));
   colorRow(bg, "Base", scene.background.color, (v) => setBg({ color: v }));
   checkRow(bg, "Transparent", scene.background.transparent, (v) => setBg({ transparent: v }));
@@ -67,29 +79,37 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   colorRow(bg, "Fade to", scene.background.fadeColor, (v) => setBg({ fadeColor: v }));
   sliderRow(bg, "Fade speed", 0.02, 2, 0.02, scene.background.fadeSpeed, (v) => setBg({ fadeSpeed: v }));
 
-  // Camera
-  const cam = group(body, "Camera", false);
+  // Camera (pinned footer)
+  const cam = group(foot, "Camera", false);
   sliderRow(cam, "FOV", 10, 120, 1, (scene.camera.fov * 180) / Math.PI,
     (deg) => store.update((s) => ({ ...s, camera: { ...s.camera, fov: (deg * Math.PI) / 180 } })), (v) => `${v|0}°`);
   cam.append(rowOf(btn("Recenter camera", cb.onResetCamera)));
 
-  // Actions
-  const actions = group(body, "Export", true);
+  // Actions (pinned footer)
+  const actions = group(foot, "Export", true);
   actions.append(rowOf(btn("Reset", cb.onReset), btn("Share", cb.onShare), btn("PNG", cb.onExport)));
-  const rec = el("div", "row");
-  rec.append(btn("Record WebM", cb.onRecord, "accent"));
-  const lenWrap = el("label", "inline grow");
-  lenWrap.innerHTML = `<span>len</span><input type="range" id="p-dur" min="1" max="30" step="1" value="6">`;
-  rec.append(lenWrap);
-  actions.append(rec);
+  const recBtn = btn("Record WebM…", cb.onRecord, "accent");
+  recBtn.id = "p-record"; // referenced for the recording busy state
+  actions.append(rowOf(recBtn));
 }
 
 // ---------------- RIGHT: selected pane ----------------
 
 function buildRight(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
-  const sel = getSelected(store.get());
+  const scene = store.get();
   root.innerHTML = "";
   root.classList.toggle("collapsed", rightCollapsed);
+
+  // No active selection (clicked empty viewport) -> placeholder, no controls.
+  const selected = scene.panes.find((p) => p.id === scene.selectedId);
+  if (!selected) {
+    const body = panelShell(root, "Pane", () => { rightCollapsed = !rightCollapsed; root.classList.toggle("collapsed", rightCollapsed); });
+    const hint = el("p", "panel-hint");
+    hint.textContent = "No pane selected. Click a pane in the viewport to edit it.";
+    body.append(hint);
+    return;
+  }
+  const sel = selected;
 
   const title = (sel.source === "media" ? (sel.mediaName || "media") : (sel.text.split("\n")[0] || "pane")).slice(0, 14);
   const body = panelShell(root, `Pane · ${title}`, () => { rightCollapsed = !rightCollapsed; root.classList.toggle("collapsed", rightCollapsed); });
@@ -117,7 +137,7 @@ function buildRight(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
     g1.append(rowOf(imp), file);
     if (sel.mediaName) g1.append(rowOf(btn("Remove media", cb.onRemoveMedia, "danger")));
   }
-  sliderRow(g1, "Resolution", 2, 24, 1, sel.cellSize, (v) => up({ cellSize: v }));
+  sliderRow(g1, "Resolution", 1, 24, 1, sel.cellSize, (v) => up({ cellSize: v }));
   sliderRow(g1, "Scale", 0.2, 8, 0.01, sel.scale, (v) => up({ scale: v }));
 
   // Transform
@@ -142,6 +162,12 @@ function buildRight(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
     (cwrap.querySelector("#p-color2") as HTMLInputElement).addEventListener("input", (e) => up({ color2: (e.target as HTMLInputElement).value }));
   }
   sliderRow(g3, "Opacity", 0, 1, 0.01, sel.alpha, (v) => up({ alpha: v }));
+
+  // Outline (decorative border around the pane's plane)
+  const go = group(body, "Outline", false);
+  checkRow(go, "Show outline", sel.outline, (v) => up({ outline: v }));
+  colorRow(go, "Outline color", sel.outlineColor, (v) => up({ outlineColor: v }));
+  sliderRow(go, "Outline width", 0.5, 8, 0.5, sel.outlineWidth, (v) => up({ outlineWidth: v }));
 
   // Card backing
   const g4 = group(body, "Card backing", false);

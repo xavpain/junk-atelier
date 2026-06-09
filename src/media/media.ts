@@ -8,7 +8,7 @@ interface Entry {
   url: string;
 }
 
-const MAX_DIM = 140; // longest sampled edge; keeps the pixel grid coarse + fast
+const MAX_DIM = 320; // longest sampled edge; higher = finer (near 1:1) detail
 
 const registry = new Map<string, Entry>();
 const sampler = document.createElement("canvas");

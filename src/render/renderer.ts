@@ -1,11 +1,16 @@
-import type { Bitmap, ColorBitmap, Scene, Pane, ProjectedQuad } from "../types";
+import type { Bitmap, ColorBitmap, Scene, Pane, ProjectedQuad, Axis } from "../types";
 import { projectPlane } from "./projectPlane";
 import { repixelate, repixelateColor } from "./repixelate";
 import { drawPaneCells, drawColorCells } from "./drawShapes";
 import { drawBackground } from "./background";
 import { pickPane } from "./hitTest";
+import { worldToScreen } from "../math/transform3d";
 
 export type MediaSampler = (paneId: string) => ColorBitmap | null;
+
+// Screen-space unit direction of a gizmo axis + how many world units one screen
+// pixel of drag along it equals (so controls can translate the pane).
+export interface GizmoAxisVec { ux: number; uy: number; worldPerPx: number; }
 
 export interface Renderer {
   setScene(scene: Scene): void;
@@ -13,12 +18,26 @@ export interface Renderer {
   setMediaSampler(fn: MediaSampler): void;
   resize(): void;
   markDirty(): void;
+  clearMediaSample(paneId: string): void; // drop cached frame so re-imports resample
   pickAt(x: number, y: number): string | null; // pane id or null
+  pickGizmo(x: number, y: number): Axis | null; // gizmo axis under cursor, or null
+  gizmoAxisVec(axis: Axis): GizmoAxisVec | null;
 }
 
 const EMPTY_BITMAP: Bitmap = { cols: 0, rows: 0, data: new Uint8Array(0) };
-const HIGHLIGHT = "#4ade80";
 const TAU = Math.PI * 2;
+
+// Move-gizmo geometry. Arrows extend GIZMO_LEN world units along each axis from
+// the selected pane's origin; standard CAD colours (X red, Y green, Z blue).
+const GIZMO_LEN = 3;
+const GIZMO_HIT = 9; // px radius for grabbing an axis
+const GIZMO_AXES: { axis: Axis; dir: [number, number, number]; color: string }[] = [
+  { axis: "x", dir: [1, 0, 0], color: "#ff5b5b" },
+  { axis: "y", dir: [0, 1, 0], color: "#4ade80" },
+  { axis: "z", dir: [0, 0, 1], color: "#5b9bff" },
+];
+
+interface GizmoSeg { axis: Axis; ox: number; oy: number; ex: number; ey: number; ux: number; uy: number; worldPerPx: number; color: string; }
 
 // Returns a copy of the pane with float (position) and sway (rotation) motion
 // applied for time ts (ms). Pure; does not mutate the source pane.
@@ -67,6 +86,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let lastQuads: ProjectedQuad[] = [];
   let lastBitmaps: Bitmap[] = [];
   let lastOrder: number[] = [];
+  // Last-frame gizmo segments for the selected pane (for axis hit-testing).
+  let gizmoSegs: GizmoSeg[] = [];
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -131,9 +152,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         drawPaneCells(ctx, cells, p, quads[i], p.cellSize);
       }
 
-      // Selection outline on top.
-      const sel = scene.panes.findIndex((p) => p.id === scene!.selectedId);
-      if (sel >= 0 && quads[sel].valid) outline(quads[sel]);
+      // Decorative per-pane border, painted in depth order with the panes.
+      for (const i of order) {
+        const p = scene.panes[i];
+        if (p.outline) strokeQuad(quads[i], p.outlineColor, p.outlineWidth, 1);
+      }
+
+      // Move gizmo for the selected pane (no selection outline — the gizmo is
+      // the selection cue). Skip if nothing is selected.
+      drawGizmo(scene, vp);
 
       lastQuads = quads; lastBitmaps = bms; lastOrder = order;
     }
@@ -152,17 +179,86 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     ctx.restore();
   }
 
-  function outline(q: ProjectedQuad) {
+  function strokeQuad(q: ProjectedQuad, color: string, width: number, alpha: number) {
+    if (!q.valid) return;
     ctx.save();
-    ctx.strokeStyle = HIGHLIGHT;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(0.5, width);
+    ctx.globalAlpha = alpha;
+    ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(q.corners[0].x, q.corners[0].y);
     for (let i = 1; i < 4; i++) ctx.lineTo(q.corners[i].x, q.corners[i].y);
     ctx.closePath();
     ctx.stroke();
     ctx.restore();
+  }
+
+  // Builds + draws the 3-axis move gizmo at the selected pane's origin, and
+  // records the screen-space segments so controls can hit-test/drag the axes.
+  function drawGizmo(s: Scene, vp: { width: number; height: number }) {
+    gizmoSegs = [];
+    const sel = s.panes.find((p) => p.id === s.selectedId);
+    if (!sel) return;
+    const O = worldToScreen(sel.position, s.camera, vp);
+    if (O.depth <= 0.01) return;
+
+    for (const a of GIZMO_AXES) {
+      const end = {
+        x: sel.position.x + a.dir[0] * GIZMO_LEN,
+        y: sel.position.y + a.dir[1] * GIZMO_LEN,
+        z: sel.position.z + a.dir[2] * GIZMO_LEN,
+      };
+      const E = worldToScreen(end, s.camera, vp);
+      if (E.depth <= 0.01) continue;
+      const dx = E.screen.x - O.screen.x, dy = E.screen.y - O.screen.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue; // axis points straight at camera — not grabbable
+      const ux = dx / len, uy = dy / len;
+      gizmoSegs.push({
+        axis: a.axis, ox: O.screen.x, oy: O.screen.y, ex: E.screen.x, ey: E.screen.y,
+        ux, uy, worldPerPx: GIZMO_LEN / len, color: a.color,
+      });
+
+      ctx.save();
+      ctx.strokeStyle = a.color;
+      ctx.fillStyle = a.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(O.screen.x, O.screen.y);
+      ctx.lineTo(E.screen.x, E.screen.y);
+      ctx.stroke();
+      // Arrowhead.
+      const ah = 8, aw = 5;
+      ctx.beginPath();
+      ctx.moveTo(E.screen.x, E.screen.y);
+      ctx.lineTo(E.screen.x - ux * ah - uy * aw, E.screen.y - uy * ah + ux * aw);
+      ctx.lineTo(E.screen.x - ux * ah + uy * aw, E.screen.y - uy * ah - ux * aw);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Origin handle on top.
+    ctx.save();
+    ctx.fillStyle = "#f5f5f5";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(O.screen.x, O.screen.y, 3.5, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Distance from point to segment, for axis grabbing.
+  function distToSeg(px: number, py: number, g: GizmoSeg): number {
+    const dx = g.ex - g.ox, dy = g.ey - g.oy;
+    const l2 = dx * dx + dy * dy || 1;
+    let t = ((px - g.ox) * dx + (py - g.oy) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = g.ox + t * dx, cy = g.oy + t * dy;
+    return Math.hypot(px - cx, py - cy);
   }
 
   resize();
@@ -174,10 +270,23 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     setMediaSampler(fn) { mediaSampler = fn; dirty = true; },
     resize,
     markDirty() { dirty = true; },
+    clearMediaSample(id) { mediaCache.delete(id); dirty = true; },
     pickAt(x, y) {
       if (!scene) return null;
       const idx = pickPane(lastOrder, lastQuads, lastBitmaps, x, y);
       return idx >= 0 ? scene.panes[idx].id : null;
+    },
+    pickGizmo(x, y) {
+      let best: Axis | null = null, bestD = GIZMO_HIT;
+      for (const g of gizmoSegs) {
+        const d = distToSeg(x, y, g);
+        if (d < bestD) { bestD = d; best = g.axis; }
+      }
+      return best;
+    },
+    gizmoAxisVec(axis) {
+      const g = gizmoSegs.find((s) => s.axis === axis);
+      return g ? { ux: g.ux, uy: g.uy, worldPerPx: g.worldPerPx } : null;
     },
   };
 }

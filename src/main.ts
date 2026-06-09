@@ -1,6 +1,6 @@
 import "./style.css";
 import type { Bitmap, Scene, AspectKey } from "./types";
-import { createStore, defaultScene, defaultCamera, selectPane, updateSelected, getSelected } from "./state/store";
+import { createStore, defaultScene, demoScene, defaultCamera, selectPane, updateSelected, getSelected } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
 import { loadGeistPixel, rasterizeText, ensureFont } from "./font/rasterizeText";
 import { createRenderer } from "./render/renderer";
@@ -9,7 +9,7 @@ import { buildPanels } from "./ui/panel";
 import { exportPng } from "./export/exportPng";
 import { recordWebm } from "./export/exportWebm";
 import { importMediaForPane, removeMedia, sampleMedia } from "./media/media";
-import { toast, dialog } from "./ui/notify";
+import { toast, dialog, formModal } from "./ui/notify";
 
 async function main() {
   const canvas = document.getElementById("viewer") as HTMLCanvasElement;
@@ -103,7 +103,11 @@ async function main() {
   }
 
   let panelSig = "";
-  const paneSig = (s: Scene) => `${s.selectedId}|${s.panes.map((p) => p.id).join(",")}`;
+  // Rebuild the right panel on selection / pane-list changes, and also when a
+  // pane's source or loaded media changes — those swap which controls are shown
+  // (text fields vs. the import button). Plain value edits stay out of the sig
+  // so typing/dragging doesn't blow away focus.
+  const paneSig = (s: Scene) => `${s.selectedId}|${s.panes.map((p) => `${p.id}:${p.source}:${p.mediaName}`).join(",")}`;
 
   store.subscribe((scene) => {
     syncBitmaps(scene);
@@ -118,12 +122,15 @@ async function main() {
     onShare: async () => {
       const url = buildShareUrl(window.location.href, store.get());
       window.history.replaceState(null, "", url);
-      try {
-        await navigator.clipboard.writeText(url);
-        toast("Link copied to clipboard", "success");
-      } catch {
-        toast("URL updated (clipboard blocked)", "warn");
-      }
+      let copied = true;
+      try { await navigator.clipboard.writeText(url); } catch { copied = false; }
+      dialog(
+        copied ? "Link copied!" : "Share link",
+        copied
+          ? `Your scene link is on the clipboard — paste it anywhere to share.\n\n${url}`
+          : `Clipboard was blocked. Copy this link manually:\n\n${url}`,
+        copied ? "success" : "warn",
+      );
     },
     onReset: () => {
       store.set(defaultScene());
@@ -135,7 +142,10 @@ async function main() {
       const id = getSelected(store.get()).id;
       try {
         const { name, kind } = await importMediaForPane(id, file);
-        store.update((s) => updateSelected(s, { source: "media", mediaName: name }));
+        // Drop any stale cached frame from a previous import on this pane, then
+        // default media to a fine (near 1:1) grid so detail survives.
+        renderer.clearMediaSample(id);
+        store.update((s) => updateSelected(s, { source: "media", mediaName: name, cellSize: 1 }));
         renderer.markDirty();
         toast(`Loaded ${kind}: ${name}`, "success");
       } catch (e) {
@@ -145,24 +155,40 @@ async function main() {
     onRemoveMedia: () => {
       const id = getSelected(store.get()).id;
       removeMedia(id);
+      renderer.clearMediaSample(id);
       store.update((s) => updateSelected(s, { source: "text", mediaName: "" }));
       renderer.markDirty();
       toast("Media removed", "info");
     },
     onRecord: async () => {
+      // Settings modal: clip length + quality (low bitrate = crunchier/artsy).
+      const body = document.createElement("div");
+      body.className = "rec-form";
+      body.innerHTML = `
+        <label class="rec-row"><span>Length · <b id="rl">6</b>s</span>
+          <input type="range" id="rec-len" min="1" max="30" step="1" value="6"></label>
+        <label class="rec-row"><span>Quality · <b id="rq">6</b> Mbps</span>
+          <input type="range" id="rec-q" min="0.5" max="12" step="0.5" value="6"></label>
+        <p class="rec-hint">Lower quality = smaller file, crunchier artifacts.</p>`;
+      const lenEl = body.querySelector("#rec-len") as HTMLInputElement;
+      const qEl = body.querySelector("#rec-q") as HTMLInputElement;
+      lenEl.addEventListener("input", () => { (body.querySelector("#rl") as HTMLElement).textContent = lenEl.value; });
+      qEl.addEventListener("input", () => { (body.querySelector("#rq") as HTMLElement).textContent = qEl.value; });
+
+      if (!(await formModal("Record WebM", body, "Record"))) return;
+      const durSec = parseFloat(lenEl.value);
+      const mbps = parseFloat(qEl.value);
+
       const btn = document.querySelector("#p-record") as HTMLButtonElement;
-      const durSec = parseFloat((document.querySelector("#p-dur") as HTMLInputElement).value);
-      const label = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "Recording…";
+      const label = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = "Recording…"; }
       try {
-        await recordWebm(canvas, durSec * 1000);
+        await recordWebm(canvas, durSec * 1000, 30, "junk-atelier.webm", mbps * 1e6);
         toast("Clip saved", "success");
       } catch (err) {
         dialog("Recording failed", (err as Error).message, "error");
       } finally {
-        btn.disabled = false;
-        btn.textContent = label;
+        if (btn) { btn.disabled = false; btn.textContent = label; }
       }
     },
   };
@@ -177,9 +203,40 @@ async function main() {
 
   attachControls(canvas, store, (x, y) => {
     const id = renderer.pickAt(x, y);
-    if (id) store.update((s) => selectPane(s, id));
+    // Hit a pane -> select it; click empty space -> clear selection (hides the
+    // pane panel + gizmo).
+    store.update((s) => (id ? selectPane(s, id) : { ...s, selectedId: "" }));
+  }, {
+    pick: (x, y) => renderer.pickGizmo(x, y),
+    axisVec: (a) => renderer.gizmoAxisVec(a),
   });
   window.addEventListener("resize", applyAspect);
+
+  // First-visit intro. Skipped when arriving via a shared/demo hash. The store's
+  // subscriber repaints + rebuilds panels, so loading the demo just needs a set().
+  maybeShowWelcome(store);
+}
+
+const SEEN_KEY = "junkAtelier.seen.v1";
+
+function maybeShowWelcome(store: ReturnType<typeof createStore>): void {
+  if (window.location.hash) return; // shared link -> respect it, no intro
+  let seen = false;
+  try { seen = !!localStorage.getItem(SEEN_KEY); } catch { /* storage blocked */ }
+  if (seen) return;
+
+  const body = document.createElement("div");
+  body.className = "welcome";
+  body.innerHTML = `
+    <p>This is a random bs project that started as an experiment without a clear goal.</p>
+    <p>I then saw a potential use for creating visuals with a strange taste — but maybe
+       you'll find it another use.</p>
+    <p class="welcome-cta">Start with a blank canvas, or load a little demo to poke at?</p>`;
+
+  formModal("Welcome to Junk Atelier", body, "Load demo", "Start blank").then((loadDemo) => {
+    try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* ignore */ }
+    if (loadDemo) store.set(demoScene());
+  });
 }
 
 main();

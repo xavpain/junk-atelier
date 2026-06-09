@@ -5,6 +5,7 @@ export function recordWebm(
   durationMs: number,
   fps = 30,
   filename = "geist-pixel.webm",
+  bitsPerSecond?: number, // lower => smaller file + more compression artifacts
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof MediaRecorder === "undefined" || !canvas.captureStream) {
@@ -19,7 +20,9 @@ export function recordWebm(
     }
 
     const stream = canvas.captureStream(fps);
-    const rec = new MediaRecorder(stream, { mimeType: mime });
+    const opts: MediaRecorderOptions = { mimeType: mime };
+    if (bitsPerSecond) opts.videoBitsPerSecond = bitsPerSecond;
+    const rec = new MediaRecorder(stream, opts);
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     rec.onerror = () => reject(new Error("Recording failed"));

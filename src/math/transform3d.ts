@@ -49,3 +49,18 @@ export function perspectiveProject(p: Vec3, params: ProjectParams): { screen: Ve
   };
   return { screen, depth };
 }
+
+// Projects a bare world point (no per-pane transform) through the camera orbit
+// + perspective. Used for overlay geometry like the move gizmo.
+export function worldToScreen(
+  p: Vec3,
+  camera: { orbit: { yaw: number; pitch: number }; pan: Vec2; zoom: number; fov: number },
+  viewport: { width: number; height: number },
+): { screen: Vec2; depth: number } {
+  let q = rotateX(p, camera.orbit.pitch);
+  q = rotateY(q, camera.orbit.yaw);
+  return perspectiveProject(q, {
+    fov: camera.fov, zoom: camera.zoom, pan: camera.pan,
+    width: viewport.width, height: viewport.height,
+  });
+}

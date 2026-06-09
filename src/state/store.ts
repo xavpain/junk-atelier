@@ -21,9 +21,12 @@ export function defaultPane(id = nextId(), text = "JUNK"): Pane {
     skew: { x: 0, y: 0 },
     cellSize: 8,
     colorMode: "solid",
-    color: "#ededed",
+    color: "#000000",
     color2: "#5a9bd4",
     alpha: 1,
+    outline: false,
+    outlineColor: "#5a9bd4",
+    outlineWidth: 1,
     card: false,
     cardColor: "#141420",
     cardAlpha: 0.85,
@@ -49,9 +52,9 @@ export function defaultCamera(): Camera {
 export function defaultBackground(): Background {
   return {
     style: "solid",
-    color: "#0a0a0a",
-    transparent: true,
-    accent: "#1a1a22",
+    color: "#ffffff",
+    transparent: false,
+    accent: "#d8d8e0",
     spacing: 16,
     dotRadius: 1,
     fade: false,
@@ -63,6 +66,41 @@ export function defaultBackground(): Background {
 export function defaultScene(): Scene {
   const pane = defaultPane();
   return { panes: [pane], selectedId: pane.id, camera: defaultCamera(), background: defaultBackground(), aspect: "free" };
+}
+
+// A pre-built scene shown when a first-time visitor picks "Load demo" — meant to
+// show off layered panes, rotation, gradient + a tinted background at a glance.
+export function demoScene(): Scene {
+  const back: Pane = {
+    ...defaultPane(nextId(), "JUNK"),
+    position: { x: -1.5, y: 1, z: -3 }, rotation: { x: 0, y: 0.5, z: 0.06 },
+    scale: 2.2, cellSize: 6, colorMode: "gradient", color: "#ff5b8a", color2: "#7e14ff",
+    outline: true, outlineColor: "#101018", outlineWidth: 2,
+  };
+  // Circle shape shows off Geist Pixel's glyph silhouette as dots.
+  const front: Pane = {
+    ...defaultPane(nextId(), "ATELIER"),
+    position: { x: 1.2, y: -1.4, z: 1.5 }, rotation: { x: -0.1, y: -0.4, z: -0.04 },
+    scale: 1.1, cellSize: 4, color: "#101018", shape: "circle",
+    card: true, cardColor: "#47bfff", cardAlpha: 0.9,
+    swayEnabled: true, swayAxis: "y", swayAmp: 0.18, swaySpeed: 0.25,
+  };
+  // Slow marquee strip — demos the scroll animation + the "grid" shape.
+  const marquee: Pane = {
+    ...defaultPane(nextId(), "★ pixel visuals with a strange taste ★ "),
+    position: { x: 0, y: -3.6, z: 0.4 }, rotation: { x: 0.12, y: 0, z: 0 },
+    scale: 0.6, cellSize: 3, color: "#7e14ff", shape: "grid",
+    animate: true, animMode: "marquee", animDir: -1, animSpeed: 16,
+  };
+  const bg: Background = {
+    ...defaultBackground(), style: "dotted", color: "#fef6e4", accent: "#ffb84d",
+    spacing: 22, dotRadius: 2,
+  };
+  return {
+    panes: [back, front, marquee], selectedId: front.id,
+    camera: { ...defaultCamera(), orbit: { yaw: -0.25, pitch: 0.12 } },
+    background: bg, aspect: "free",
+  };
 }
 
 // ---- Pure reducers (use via store.update) ----

@@ -70,6 +70,51 @@ export function dialog(title: string, message: string, kind: Kind = "error"): Pr
   });
 }
 
+// Generic OK/Cancel modal carrying a custom body. Resolves true on OK / Enter,
+// false on Cancel / Esc / overlay click. Shares the xp-dialog chrome.
+export function formModal(title: string, body: HTMLElement, okLabel = "OK", cancelLabel = "Cancel"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const win = document.createElement("div");
+    win.className = "xp-dialog form";
+    win.innerHTML = `
+      <div class="xp-titlebar">
+        <span class="xp-title">${esc(title)}</span>
+        <button class="xp-x" aria-label="Close">✕</button>
+      </div>
+      <div class="xp-body form-body"></div>
+      <div class="xp-actions">
+        <button class="xp-cancel"></button>
+        <button class="xp-ok"></button>
+      </div>`;
+    (win.querySelector(".form-body") as HTMLElement).append(body);
+    (win.querySelector(".xp-ok") as HTMLButtonElement).textContent = okLabel;
+    (win.querySelector(".xp-cancel") as HTMLButtonElement).textContent = cancelLabel;
+    overlay.appendChild(win);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add("in"));
+
+    const close = (ok: boolean) => {
+      overlay.classList.remove("in");
+      overlay.addEventListener("transitionend", () => overlay.remove(), { once: true });
+      setTimeout(() => overlay.remove(), 300);
+      window.removeEventListener("keydown", onKey);
+      resolve(ok);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close(false);
+      if (e.key === "Enter") close(true);
+    };
+    window.addEventListener("keydown", onKey);
+    (win.querySelector(".xp-ok") as HTMLButtonElement).addEventListener("click", () => close(true));
+    (win.querySelector(".xp-cancel") as HTMLButtonElement).addEventListener("click", () => close(false));
+    (win.querySelector(".xp-x") as HTMLButtonElement).addEventListener("click", () => close(false));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(false); });
+    (win.querySelector(".xp-ok") as HTMLButtonElement).focus();
+  });
+}
+
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 }

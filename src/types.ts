@@ -45,6 +45,11 @@ export interface Pane {
   color: string;         // hex (solid, or gradient start)
   color2: string;        // hex (gradient end)
   alpha: number;         // 0..1
+  // Decorative border stroked around the pane's projected quad (independent of
+  // selection — purely a style choice).
+  outline: boolean;
+  outlineColor: string;  // hex
+  outlineWidth: number;  // screen px
   // Card backing: a filled quad behind the cells so the pane reads as a surface
   // that occludes the background (dots/grid sit behind it).
   card: boolean;
