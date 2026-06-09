@@ -87,9 +87,9 @@ export function demoScene(): Scene {
   };
   // Slow marquee strip — demos the scroll animation + the "grid" shape.
   const marquee: Pane = {
-    ...defaultPane(nextId(), "★ pixel visuals with a strange taste ★ "),
+    ...defaultPane(nextId(), "★ try it out brodie ★ "),
     position: { x: 0, y: -3.6, z: 0.4 }, rotation: { x: 0.12, y: 0, z: 0 },
-    scale: 0.6, cellSize: 3, color: "#7e14ff", shape: "grid",
+    scale: 0.9, cellSize: 3, color: "#7e14ff", shape: "grid", skew: { x: 0, y: -0.2 },
     animate: true, animMode: "marquee", animDir: -1, animSpeed: 16,
   };
   const bg: Background = {
