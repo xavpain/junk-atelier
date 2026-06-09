@@ -228,10 +228,8 @@ function maybeShowWelcome(store: ReturnType<typeof createStore>): void {
   const body = document.createElement("div");
   body.className = "welcome";
   body.innerHTML = `
-    <p>This is a random bs project that started as an experiment without a clear goal.</p>
-    <p>I then saw a potential use for creating visuals with a strange taste — but maybe
-       you'll find it another use.</p>
-    <p class="welcome-cta">Start with a blank canvas, or load a little demo to poke at?</p>`;
+    <p>A random bs experiment with no clear goal; maybe you'll find a use for its strange visuals.</p>
+    <p class="welcome-cta">Blank canvas, or a demo to poke at?</p>`;
 
   formModal("Welcome to Junk Atelier", body, "Load demo", "Start blank").then((loadDemo) => {
     try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* ignore */ }
