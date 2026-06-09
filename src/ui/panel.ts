@@ -17,8 +17,11 @@ export interface PanelCallbacks {
 }
 
 // Collapse state persists across rebuilds (rebuilt on selection / pane changes).
-let leftCollapsed = false;
-let rightCollapsed = false;
+// On phones both panels start collapsed (just titlebars) so the canvas is the
+// first thing you see — tap a titlebar to open the controls.
+const startCollapsed = typeof matchMedia === "function" && matchMedia("(max-width: 720px)").matches;
+let leftCollapsed = startCollapsed;
+let rightCollapsed = startCollapsed;
 
 export function buildPanels(left: HTMLElement, right: HTMLElement, store: Store, cb: PanelCallbacks): void {
   buildLeft(left, store, cb);

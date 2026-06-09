@@ -28,6 +28,7 @@ input[type="range"], input[type="checkbox"], label.inline, .toast, .xp-ok, .xp-x
 }
 
 #viewer { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  touch-action: none; /* we own touch gestures (orbit / pinch / pan) */
   cursor: url("./assets/cursors/arrow.svg") 2 2, grab; }
 #viewer.dragging { cursor: url("./assets/cursors/arrow.svg") 2 2, grabbing; }
 #viewer.staged { inset: auto; border: 2px solid var(--hard);
@@ -248,3 +249,48 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.1)); }
 .xp-ok:hover { filter: brightness(1.04); }
 .xp-ok:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.35); }
+
+/* ---------------- floating links badge (donate / site) ---------------- */
+/* Bottom-centre pill — the one strip clear of the side rails (desktop) and the
+   top/bottom docked panels (mobile). Pixel/brutalist chrome like the buttons. */
+#links { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 6; display: flex; gap: 8px; align-items: center;
+  font-family: "Geist Pixel Square", var(--chrome); font-size: 12px; letter-spacing: 0.2px; }
+#links a { text-decoration: none; font-weight: 700; color: var(--ink);
+  padding: 7px 12px; border: 2px solid var(--hard); background: #23232f;
+  box-shadow: 3px 3px 0 0 var(--hard); white-space: nowrap;
+  cursor: url("./assets/cursors/pointer.svg") 10 2, pointer;
+  transition: transform 0.04s ease, box-shadow 0.04s ease, filter 0.1s ease; }
+#links a:hover { filter: brightness(1.12); }
+#links a:active { transform: translate(3px, 3px); box-shadow: 0 0 0 0 var(--hard); }
+#links a.donate { color: #2a0808; background: #ffb3c1; }
+
+/* ---------------- mobile / narrow screens ---------------- */
+@media (max-width: 720px) {
+  /* Panels stop being fixed-height side rails. They dock full-width — Scene at
+     the top, Pane at the bottom — and cap their height so the canvas stays
+     visible behind them. Each scrolls internally when expanded. */
+  .panel { left: 8px; right: 8px; width: auto; top: auto;
+    height: auto; max-height: 48vh; border-radius: 7px; }
+  #panel-left { top: 8px; }
+  #panel-right { bottom: 8px; }
+  .panel.collapsed { max-height: none; }
+
+  /* The pinned-footer layout (left panel) needs an explicit body cap so its
+     inner scroll area can shrink instead of pushing the footer off-screen. */
+  .panel-body { max-height: calc(48vh - 38px); }
+  .pane-list { max-height: 24vh; }
+
+  /* Bigger tap targets. */
+  .panel button { padding: 11px 10px; }
+  .group > summary { padding: 10px 11px; }
+  input[type="range"] { height: 26px; }
+  input[type="checkbox"] { width: 20px; height: 20px; }
+
+  /* Toasts span the width so they're readable on a phone. */
+  #toasts { left: 8px; right: 8px; bottom: 8px; align-items: stretch; }
+  .toast { max-width: none; }
+
+  /* Lift the links pill clear of the bottom-docked Pane titlebar. */
+  #links { bottom: 54px; }
+}
