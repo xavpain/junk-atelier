@@ -38,8 +38,12 @@ input[type="range"], input[type="checkbox"], label.inline, .toast, .xp-ok, .xp-x
   background: var(--panel-bg); color: var(--ink);
   border: 2px solid var(--hard); border-radius: 7px 7px 4px 4px;
   box-shadow: inset 0 0 0 1px #33333f, 0 14px 36px rgba(0,0,0,0.5);
-  max-height: calc(100vh - 28px); display: flex; flex-direction: column;
-  font-size: 12px; overflow: hidden; }
+  /* Fixed outer size regardless of pane count — only the body scrolls. */
+  height: calc(100vh - 28px); display: flex; flex-direction: column;
+  /* Full pixel menus. */
+  font-family: "Geist Pixel Square", var(--chrome); font-size: 12px; letter-spacing: 0.2px;
+  overflow: hidden; }
+.panel.collapsed { height: auto; } /* collapsed = just the titlebar */
 #panel-left { left: 14px; }
 #panel-right { right: 14px; }
 
@@ -51,8 +55,32 @@ input[type="range"], input[type="checkbox"], label.inline, .toast, .xp-ok, .xp-x
 .panel.collapsed { }
 .panel-title { font-weight: 700; letter-spacing: 0.02em; color: #fff;
   text-shadow: 1px 1px 0 rgba(0,0,0,0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.panel-body { padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; }
+.panel-body { padding: 10px; overflow-y: auto; flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 9px; }
 .panel.collapsed .panel-body { display: none; }
+.panel-hint { margin: 0; color: #8a8a9c; font-size: 12px; line-height: 1.5; }
+
+/* Left panel with a pinned footer: body holds a scroll area + a fixed foot. */
+.panel-body.has-foot { padding: 0; gap: 0; overflow: hidden; }
+.panel-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+.panel-foot { flex: 0 0 auto; padding: 10px; display: flex; flex-direction: column; gap: 9px;
+  background: #101017; border-top: 2px solid var(--hard);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+/* Panes is the expanding region: it gets the room and scrolls past a few rows. */
+.pane-list { max-height: 34vh; overflow-y: auto; }
+
+/* Cool retro scrollbar on every scrollable panel region. */
+.panel-body, .panel-scroll, .pane-list { scrollbar-width: thin; scrollbar-color: var(--accent) #0d0d14; }
+.panel-body::-webkit-scrollbar, .panel-scroll::-webkit-scrollbar, .pane-list::-webkit-scrollbar { width: 11px; }
+.panel-body::-webkit-scrollbar-track, .panel-scroll::-webkit-scrollbar-track, .pane-list::-webkit-scrollbar-track {
+  background: #0d0d14; border-left: 1px solid #2c2c38; }
+.panel-body::-webkit-scrollbar-thumb, .panel-scroll::-webkit-scrollbar-thumb, .pane-list::-webkit-scrollbar-thumb {
+  border: 2px solid #0d0d14; border-radius: 6px;
+  background: linear-gradient(180deg, #6af09a 0%, #2f9e51 50%, #1d6e38 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.4); }
+.panel-body::-webkit-scrollbar-thumb:hover, .panel-scroll::-webkit-scrollbar-thumb:hover,
+.pane-list::-webkit-scrollbar-thumb:hover { filter: brightness(1.12); }
 
 /* window-control collapse button (glossy chiclet) */
 .panel button.collapse { flex: 0 0 auto; width: 24px; height: 22px; padding: 0; overflow: hidden;
@@ -92,8 +120,11 @@ input[type="range"], input[type="checkbox"], label.inline, .toast, .xp-ok, .xp-x
 /* ---------------- pane list ---------------- */
 .pane-list { display: flex; flex-direction: column; gap: 4px; }
 .pane-row { background: linear-gradient(180deg, #1a1a24, #101017); border: 1.5px solid #2c2c38;
-  border-radius: 5px; padding: 7px 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-radius: 5px; padding: 7px 9px; display: flex; align-items: center; gap: 7px;
   font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+.pane-ico { flex: 0 0 auto; width: 14px; text-align: center; font-family: var(--chrome);
+  font-size: 11px; font-weight: 800; color: var(--accent); }
+.pane-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pane-row:hover { border-color: #45455a; background: linear-gradient(180deg, #20202c, #16161f); }
 .pane-row.sel { background: linear-gradient(180deg, #16361f, #0c2014); border-color: var(--accent);
   color: #cffadd; box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(74,222,128,0.35); }
@@ -124,32 +155,21 @@ input[type="color"] { width: 40px; height: 26px; padding: 2px; background: #0b0b
   border: 1.5px solid #30303c; border-radius: 3px; cursor: pointer; flex: 0 0 auto; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
-/* ---------------- glossy aqua/dreamy buttons ---------------- */
+/* ---------------- flat pixel / brutalist buttons ---------------- */
 .row { display: flex; gap: 8px; align-items: center; }
 .panel button { position: relative; flex: 1; font: inherit; font-weight: 700; color: var(--ink);
-  padding: 9px 11px; border: 1.5px solid var(--hard); border-radius: 9px; overflow: hidden;
-  background: linear-gradient(180deg, #3b3b4c 0%, #232330 49%, #16161f 51%, #20202c 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.5),
-    inset 0 -3px 6px rgba(0,0,0,0.55),
-    inset 0 0 0 1px rgba(255,255,255,0.05),
-    0 3px 6px rgba(0,0,0,0.5),
-    0 1px 0 rgba(255,255,255,0.06);
-  text-shadow: 0 -1px 0 rgba(0,0,0,0.5);
-  transition: filter 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease; }
-/* top sheen / glass reflection */
-.panel button::before { content: ""; position: absolute; left: 1px; right: 1px; top: 1px; height: 46%;
-  border-radius: 8px 8px 60% 60% / 8px 8px 100% 100%; pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.08)); }
-.panel button:hover { filter: brightness(1.18) saturate(1.1); }
-.panel button:active { transform: translateY(1px);
-  box-shadow: inset 0 2px 5px rgba(0,0,0,0.7), inset 0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.4); }
-.panel button:active::before { opacity: 0.6; }
+  padding: 8px 10px; border: 2px solid var(--hard); border-radius: 0;
+  background: #23232f; box-shadow: 3px 3px 0 0 var(--hard);
+  text-shadow: none; transition: transform 0.04s ease, box-shadow 0.04s ease, background 0.1s ease; }
+.panel button::before { content: none; } /* kill old gloss sheen */
+.panel button:hover { background: #2e2e3e; }
+/* press = button sinks onto its own shadow */
+.panel button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 0 var(--hard); }
 
-.panel button.accent { color: #06210f; text-shadow: 0 1px 0 rgba(255,255,255,0.35);
-  background: linear-gradient(180deg, #b6ffd2 0%, #5fe294 48%, #28b261 52%, #3ad072 100%); }
-.panel button.danger { color: #2a0808; text-shadow: 0 1px 0 rgba(255,255,255,0.3);
-  background: linear-gradient(180deg, #ffc2c2 0%, #ff7d7d 48%, #d83c3c 52%, #e85656 100%); }
+.panel button.accent { color: #06210f; background: var(--accent); }
+.panel button.accent:hover { filter: brightness(1.08); }
+.panel button.danger { color: #2a0808; background: #ff6b6b; }
+.panel button.danger:hover { filter: brightness(1.08); }
 
 /* ---------------- toasts ---------------- */
 #toasts { position: fixed; right: 14px; bottom: 14px; z-index: 60;
@@ -197,8 +217,27 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .xp-dialog.error .xp-ico { background: #c0392b; }
 .xp-dialog.warn .xp-ico { background: #d9a200; }
 .xp-dialog.success .xp-ico { background: #2f9e51; }
-.xp-text { font-size: 12.5px; line-height: 1.45; color: #15151c; }
-.xp-actions { display: flex; justify-content: flex-end; padding: 0 16px 16px; }
+.xp-text { font-size: 12.5px; line-height: 1.45; color: #15151c;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+.xp-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 16px; }
+/* Cancel mirrors the OK button chrome but muted. */
+.xp-cancel { min-width: 78px; padding: 7px 14px; font: inherit; font-weight: 700; color: #2a2a33;
+  border: 1px solid var(--hard); border-radius: 8px; cursor: pointer;
+  background: linear-gradient(180deg, #f3f3f7 0%, #dcdce4 49%, #c2c3ce 51%, #d2d3dc 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 2px 4px rgba(0,0,0,0.3); }
+.xp-cancel:hover { filter: brightness(1.03); }
+.xp-cancel:active { transform: translateY(1px); }
+/* Record settings form */
+.form-body { display: block; padding: 16px; }
+.rec-form { display: flex; flex-direction: column; gap: 12px; }
+.rec-row { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 700; color: #15151c; }
+.rec-row b { font-variant-numeric: tabular-nums; }
+.rec-row input[type="range"] { width: 100%; }
+.rec-hint { margin: 0; font-size: 11px; color: #5a5a66; }
+/* First-visit welcome */
+.welcome { display: flex; flex-direction: column; gap: 9px; max-width: 360px; }
+.welcome p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #15151c; }
+.welcome .welcome-cta { font-weight: 700; color: #101018; }
 .xp-ok { position: relative; min-width: 84px; padding: 7px 16px; font: inherit; font-weight: 700;
   overflow: hidden; color: #101018; border: 1px solid var(--hard); border-radius: 8px;
   background: linear-gradient(180deg, #ffffff 0%, #ebecf2 49%, #c8c9d4 51%, #dddee7 100%);
