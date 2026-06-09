@@ -71,25 +71,27 @@ export function defaultScene(): Scene {
 // A pre-built scene shown when a first-time visitor picks "Load demo" — meant to
 // show off layered panes, rotation, gradient + a tinted background at a glance.
 export function demoScene(): Scene {
+  // Credits-scroll + line shape, no outline, lifted up.
   const back: Pane = {
     ...defaultPane(nextId(), "JUNK"),
-    position: { x: -1.5, y: 1, z: -3 }, rotation: { x: 0, y: 0.5, z: 0.06 },
-    scale: 2.2, cellSize: 6, colorMode: "gradient", color: "#ff5b8a", color2: "#7e14ff",
-    outline: true, outlineColor: "#101018", outlineWidth: 2,
+    position: { x: -1.5, y: 2.6, z: -3 }, rotation: { x: 0, y: 0.5, z: 0.06 },
+    scale: 2.2, cellSize: 6, shape: "line", colorMode: "gradient", color: "#ff5b8a", color2: "#7e14ff",
+    animate: true, animMode: "credits", animDir: 1, animSpeed: 24,
   };
   // Circle shape shows off Geist Pixel's glyph silhouette as dots.
   const front: Pane = {
     ...defaultPane(nextId(), "ATELIER"),
-    position: { x: 1.2, y: -1.4, z: 1.5 }, rotation: { x: -0.1, y: -0.4, z: -0.04 },
+    position: { x: 1.2, y: -1.6, z: 1.5 }, rotation: { x: -0.1, y: -0.4, z: -0.04 },
     scale: 1.1, cellSize: 4, color: "#101018", shape: "circle",
     card: true, cardColor: "#47bfff", cardAlpha: 0.9,
     swayEnabled: true, swayAxis: "y", swayAmp: 0.18, swaySpeed: 0.25,
   };
-  // Slow marquee strip — demos the scroll animation + the "grid" shape.
+  // Slow marquee strip — demos the scroll animation + the "grid" shape, outlined.
   const marquee: Pane = {
     ...defaultPane(nextId(), "★ try it out brodie ★ "),
-    position: { x: 0, y: -3.6, z: 0.4 }, rotation: { x: 0.12, y: 0, z: 0 },
+    position: { x: 0, y: -4.6, z: 0.4 }, rotation: { x: 0.12, y: 0, z: 0 },
     scale: 0.9, cellSize: 3, color: "#7e14ff", shape: "grid", skew: { x: 0, y: -0.2 },
+    outline: true, outlineColor: "#101018", outlineWidth: 2,
     animate: true, animMode: "marquee", animDir: -1, animSpeed: 16,
   };
   const bg: Background = {
