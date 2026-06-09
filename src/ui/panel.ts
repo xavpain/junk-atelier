@@ -65,7 +65,14 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   // Canvas / format
   const fmt = group(scroll, "Canvas", true);
   selectRow(fmt, "Format", ["free", "9:16", "1:1", "4:5", "16:9", "4:3"], scene.aspect,
-    (v) => store.update((s) => ({ ...s, aspect: v as AspectKey })));
+    (v) => store.update((s) => ({ ...s, aspect: v as AspectKey })), {
+      free: "free · fit window",
+      "9:16": "9:16 · reel / tiktok / shorts",
+      "1:1": "1:1 · square post",
+      "4:5": "4:5 · insta portrait",
+      "16:9": "16:9 · youtube / desktop",
+      "4:3": "4:3 · classic",
+    });
 
   // Background
   const setBg = (patch: Partial<Background>) => store.update((s) => ({ ...s, background: { ...s.background, ...patch } }));
@@ -243,9 +250,9 @@ function sliderRow(
   parent.append(wrap);
 }
 
-function selectRow(parent: HTMLElement, label: string, opts: string[], value: string, onChange: (v: string) => void): void {
+function selectRow(parent: HTMLElement, label: string, opts: string[], value: string, onChange: (v: string) => void, labels?: Record<string, string>): void {
   const wrap = el("label", "ctrl");
-  wrap.innerHTML = `<span>${label}</span><select>${opts.map((o) => `<option value="${o}" ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+  wrap.innerHTML = `<span>${label}</span><select>${opts.map((o) => `<option value="${o}" ${o === value ? "selected" : ""}>${esc(labels?.[o] ?? o)}</option>`).join("")}</select>`;
   (wrap.querySelector("select") as HTMLSelectElement).addEventListener("change", (e) => onChange((e.target as HTMLSelectElement).value));
   parent.append(wrap);
 }

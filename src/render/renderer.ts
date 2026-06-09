@@ -19,8 +19,10 @@ export interface Renderer {
   resize(): void;
   markDirty(): void;
   clearMediaSample(paneId: string): void; // drop cached frame so re-imports resample
-  setOverlay(visible: boolean): void; // toggle the move gizmo (hidden for exports)
-  renderNow(): void;                  // force a synchronous repaint (for PNG capture)
+  // Render at an explicit pixel size with the gizmo hidden (for PNG/WebM export at
+  // the chosen format resolution). endCapture restores the on-screen size.
+  beginCapture(width: number, height: number): void;
+  endCapture(): void;
   pickAt(x: number, y: number): string | null; // pane id or null
   pickGizmo(x: number, y: number): Axis | null; // gizmo axis under cursor, or null
   gizmoAxisVec(axis: Axis): GizmoAxisVec | null;
@@ -127,7 +129,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if (!scene) return;
     dirty = false;
     const vp = { width: cssW, height: cssH };
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear in draw-space (cssW/cssH) so it's correct under both the normal
+    // transform and the scaled capture transform.
+    ctx.clearRect(0, 0, cssW, cssH);
     drawBackground(ctx, scene.background, vp, ts);
 
     // Resolve each pane's source (text bitmap or sampled media grid), apply
@@ -295,8 +299,14 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     resize,
     markDirty() { dirty = true; },
     clearMediaSample(id) { mediaCache.delete(id); dirty = true; },
-    setOverlay(v) { showOverlay = v; dirty = true; },
-    renderNow() { paint(lastTs); },
+    beginCapture(w, h) {
+      // Same framing (viewport stays cssW/cssH), rasterized at w×h via transform.
+      showOverlay = false;
+      canvas.width = w; canvas.height = h;
+      ctx.setTransform(w / cssW, 0, 0, h / cssH, 0, 0);
+      paint(lastTs); // synchronous so the canvas holds the frame for PNG toBlob
+    },
+    endCapture() { showOverlay = true; resize(); }, // resize() restores backing + transform
     pickAt(x, y) {
       if (!scene) return null;
       const idx = pickPane(lastOrder, lastQuads, lastBitmaps, x, y);

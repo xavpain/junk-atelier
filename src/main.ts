@@ -35,6 +35,15 @@ async function main() {
   const ASPECTS: Record<AspectKey, number | null> = {
     free: null, "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "4:5": 4 / 5, "4:3": 4 / 3,
   };
+  // Export resolution per format (px). `free` keeps the on-screen size.
+  const EXPORT_RES: Record<AspectKey, [number, number] | null> = {
+    free: null,
+    "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080],
+    "4:5": [1080, 1350], "4:3": [1440, 1080],
+  };
+  function captureSize(): [number, number] {
+    return EXPORT_RES[store.get().aspect] ?? [canvas.width, canvas.height];
+  }
   function applyAspect() {
     const a = ASPECTS[store.get().aspect];
     const st = canvas.style;
@@ -118,13 +127,13 @@ async function main() {
   });
 
   const callbacks = {
-    onExport: () => {
-      // Repaint without the gizmo overlay so it isn't baked into the PNG.
-      renderer.setOverlay(false);
-      renderer.renderNow();
-      exportPng(canvas);
-      renderer.setOverlay(true);
-      toast("PNG saved", "success");
+    onExport: async () => {
+      // Render at the chosen format's real resolution, gizmo hidden.
+      const [w, h] = captureSize();
+      renderer.beginCapture(w, h);
+      await exportPng(canvas);
+      renderer.endCapture();
+      toast(`PNG saved (${w}×${h})`, "success");
     },
     onLoadDemo: async () => {
       const body = document.createElement("div");
@@ -195,14 +204,16 @@ async function main() {
       const btn = document.querySelector("#p-record") as HTMLButtonElement;
       const label = btn?.textContent;
       if (btn) { btn.disabled = true; btn.textContent = "Recording…"; }
-      renderer.setOverlay(false); // keep the gizmo out of the clip
+      // Capture at the format resolution with the gizmo hidden for the whole clip.
+      const [w, h] = captureSize();
+      renderer.beginCapture(w, h);
       try {
         await recordWebm(canvas, durSec * 1000, 30, "junk-atelier.webm", mbps * 1e6);
-        toast("Clip saved", "success");
+        toast(`Clip saved (${w}×${h})`, "success");
       } catch (err) {
         dialog("Recording failed", (err as Error).message, "error");
       } finally {
-        renderer.setOverlay(true);
+        renderer.endCapture();
         if (btn) { btn.disabled = false; btn.textContent = label; }
       }
     },
