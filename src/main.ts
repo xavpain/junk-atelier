@@ -118,7 +118,20 @@ async function main() {
   });
 
   const callbacks = {
-    onExport: () => { exportPng(canvas); toast("PNG saved", "success"); },
+    onExport: () => {
+      // Repaint without the gizmo overlay so it isn't baked into the PNG.
+      renderer.setOverlay(false);
+      renderer.renderNow();
+      exportPng(canvas);
+      renderer.setOverlay(true);
+      toast("PNG saved", "success");
+    },
+    onLoadDemo: async () => {
+      const body = document.createElement("div");
+      body.className = "welcome";
+      body.innerHTML = `<p>this wipes your current scene. load the demo anyway?</p>`;
+      if (await formModal("load demo?", body, "load demo", "nah")) store.set(demoScene());
+    },
     onShare: async () => {
       const url = buildShareUrl(window.location.href, store.get());
       window.history.replaceState(null, "", url);
@@ -182,12 +195,14 @@ async function main() {
       const btn = document.querySelector("#p-record") as HTMLButtonElement;
       const label = btn?.textContent;
       if (btn) { btn.disabled = true; btn.textContent = "Recording…"; }
+      renderer.setOverlay(false); // keep the gizmo out of the clip
       try {
         await recordWebm(canvas, durSec * 1000, 30, "junk-atelier.webm", mbps * 1e6);
         toast("Clip saved", "success");
       } catch (err) {
         dialog("Recording failed", (err as Error).message, "error");
       } finally {
+        renderer.setOverlay(true);
         if (btn) { btn.disabled = false; btn.textContent = label; }
       }
     },

@@ -19,6 +19,8 @@ export interface Renderer {
   resize(): void;
   markDirty(): void;
   clearMediaSample(paneId: string): void; // drop cached frame so re-imports resample
+  setOverlay(visible: boolean): void; // toggle the move gizmo (hidden for exports)
+  renderNow(): void;                  // force a synchronous repaint (for PNG capture)
   pickAt(x: number, y: number): string | null; // pane id or null
   pickGizmo(x: number, y: number): Axis | null; // gizmo axis under cursor, or null
   gizmoAxisVec(axis: Axis): GizmoAxisVec | null;
@@ -88,6 +90,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let lastOrder: number[] = [];
   // Last-frame gizmo segments for the selected pane (for axis hit-testing).
   let gizmoSegs: GizmoSeg[] = [];
+  let showOverlay = true; // gizmo is hidden while capturing PNG/WebM
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -116,55 +119,76 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (animating) dirty = true;
     }
     lastTs = ts;
-
-    if (dirty && scene) {
-      dirty = false;
-      const vp = { width: cssW, height: cssH };
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground(ctx, scene.background, vp, ts);
-
-      // Resolve each pane's source (text bitmap or sampled media grid), apply
-      // motion, project, then sort far->near for painter's blend.
-      const samples = scene.panes.map((p) => (p.source === "media" ? getSample(p.id) : null));
-      const bms = scene.panes.map((p, i) =>
-        p.source === "media"
-          ? (samples[i] ? sizeBitmap(samples[i]!.cols, samples[i]!.rows) : EMPTY_BITMAP)
-          : bmp(p.id));
-      const moved = scene.panes.map((p) => animatedPane(p, ts));
-      const quads = moved.map((p, i) => projectPlane(bms[i], p, scene!.camera, vp));
-      const order = quads
-        .map((_, i) => i)
-        .filter((i) => quads[i].valid)
-        .sort((a, b) => quads[b].meanDepth - quads[a].meanDepth);
-
-      for (const i of order) {
-        const p = scene.panes[i];
-        if (p.card) drawCard(quads[i], p);
-        if (p.source === "media") {
-          if (samples[i]) drawColorCells(ctx, repixelateColor(samples[i]!, quads[i], vp, p.cellSize), p.alpha, p.cellSize);
-          continue;
-        }
-        const off = Math.round(scrollPx.get(p.id) ?? 0);
-        const scroll = p.animate
-          ? p.animMode === "credits" ? { du: 0, dv: off } : { du: off, dv: 0 }
-          : undefined;
-        const cells = repixelate(bms[i], quads[i], vp, p.cellSize, scroll);
-        drawPaneCells(ctx, cells, p, quads[i], p.cellSize);
-      }
-
-      // Decorative per-pane border, painted in depth order with the panes.
-      for (const i of order) {
-        const p = scene.panes[i];
-        if (p.outline) strokeQuad(quads[i], p.outlineColor, p.outlineWidth, 1);
-      }
-
-      // Move gizmo for the selected pane (no selection outline — the gizmo is
-      // the selection cue). Skip if nothing is selected.
-      drawGizmo(scene, vp);
-
-      lastQuads = quads; lastBitmaps = bms; lastOrder = order;
-    }
+    if (dirty && scene) paint(ts);
     requestAnimationFrame(frame);
+  }
+
+  function paint(ts: number) {
+    if (!scene) return;
+    dirty = false;
+    const vp = { width: cssW, height: cssH };
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBackground(ctx, scene.background, vp, ts);
+
+    // Resolve each pane's source (text bitmap or sampled media grid), apply
+    // motion, project, then sort far->near for painter's blend.
+    const samples = scene.panes.map((p) => (p.source === "media" ? getSample(p.id) : null));
+    const bms = scene.panes.map((p, i) =>
+      p.source === "media"
+        ? (samples[i] ? sizeBitmap(samples[i]!.cols, samples[i]!.rows) : EMPTY_BITMAP)
+        : bmp(p.id));
+    const moved = scene.panes.map((p) => animatedPane(p, ts));
+    const quads = moved.map((p, i) => projectPlane(bms[i], p, scene!.camera, vp));
+    const order = quads
+      .map((_, i) => i)
+      .filter((i) => quads[i].valid)
+      .sort((a, b) => quads[b].meanDepth - quads[a].meanDepth);
+
+    for (const i of order) {
+      const p = scene.panes[i];
+      if (p.card) drawCard(quads[i], p);
+      if (p.source === "media") {
+        // Clamp the effective cell size so a coarse-but-huge plane can't spawn
+        // millions of fill ops (the cause of media import CPU spikes).
+        if (samples[i]) {
+          const cs = mediaCellSize(p.cellSize, quads[i]);
+          drawColorCells(ctx, repixelateColor(samples[i]!, quads[i], vp, cs), p.alpha, cs);
+        }
+        continue;
+      }
+      const off = Math.round(scrollPx.get(p.id) ?? 0);
+      const scroll = p.animate
+        ? p.animMode === "credits" ? { du: 0, dv: off } : { du: off, dv: 0 }
+        : undefined;
+      const cells = repixelate(bms[i], quads[i], vp, p.cellSize, scroll);
+      drawPaneCells(ctx, cells, p, quads[i], p.cellSize);
+    }
+
+    // Decorative per-pane border, painted in depth order with the panes.
+    for (const i of order) {
+      const p = scene.panes[i];
+      if (p.outline) strokeQuad(quads[i], p.outlineColor, p.outlineWidth, 1);
+    }
+
+    // Move gizmo for the selected pane — overlay only, never baked into exports.
+    if (showOverlay) drawGizmo(scene, vp);
+    else gizmoSegs = [];
+
+    lastQuads = quads; lastBitmaps = bms; lastOrder = order;
+  }
+
+  // Effective media cell size: never let one pane exceed MEDIA_CELL_CAP cells.
+  const MEDIA_CELL_CAP = 90000;
+  function mediaCellSize(cellSize: number, q: ProjectedQuad): number {
+    if (!q.valid) return cellSize;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of q.corners) {
+      minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+      minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y);
+    }
+    const area = Math.max(0, maxX - minX) * Math.max(0, maxY - minY);
+    const est = area / (cellSize * cellSize);
+    return est <= MEDIA_CELL_CAP ? cellSize : Math.ceil(Math.sqrt(area / MEDIA_CELL_CAP));
   }
 
   function drawCard(q: ProjectedQuad, p: Pane) {
@@ -271,6 +295,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     resize,
     markDirty() { dirty = true; },
     clearMediaSample(id) { mediaCache.delete(id); dirty = true; },
+    setOverlay(v) { showOverlay = v; dirty = true; },
+    renderNow() { paint(lastTs); },
     pickAt(x, y) {
       if (!scene) return null;
       const idx = pickPane(lastOrder, lastQuads, lastBitmaps, x, y);

@@ -13,6 +13,7 @@ export interface PanelCallbacks {
   onResetCamera: () => void;
   onImportMedia: (file: File) => void;
   onRemoveMedia: () => void;
+  onLoadDemo: () => void;
 }
 
 // Collapse state persists across rebuilds (rebuilt on selection / pane changes).
@@ -91,6 +92,7 @@ function buildLeft(root: HTMLElement, store: Store, cb: PanelCallbacks): void {
   const recBtn = btn("Record WebM…", cb.onRecord, "accent");
   recBtn.id = "p-record"; // referenced for the recording busy state
   actions.append(rowOf(recBtn));
+  actions.append(rowOf(btn("Load demo", cb.onLoadDemo)));
 }
 
 // ---------------- RIGHT: selected pane ----------------
