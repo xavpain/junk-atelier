@@ -48,7 +48,7 @@ export function openGallery(hooks: GalleryHooks): void {
   listEntries().then(({ entries }) => {
     list.innerHTML = "";
     if (entries.length === 0) {
-      list.innerHTML = `<p class="gallery-msg">nothing here yet — be the first to submit.</p>`;
+      list.innerHTML = `<p class="gallery-msg">nothing here yet. be the first to submit.</p>`;
       return;
     }
     for (const entry of entries) {
@@ -78,7 +78,7 @@ async function submitFlow(scene: string): Promise<void> {
   body.className = "welcome gallery-submit";
   body.innerHTML = `
     <p>submits the scene as it looks right now. imported media stays on your
-       machine — other people will see a placeholder where it was.</p>
+       machine, other people will see a placeholder where it was.</p>
     <label>name<br><input id="g-name" maxlength="40" placeholder="my junk"></label>
     <label>author (optional)<br><input id="g-author" maxlength="24" placeholder="anonymous"></label>`;
   const nameEl = body.querySelector("#g-name") as HTMLInputElement;
@@ -90,7 +90,7 @@ async function submitFlow(scene: string): Promise<void> {
 
   try {
     await submitEntry(name, authorEl.value.trim() || "anonymous", scene);
-    toast("submitted — thanks!", "success");
+    toast("submitted, thanks!", "success");
   } catch (e) {
     toast((e as Error).message, "error");
   }

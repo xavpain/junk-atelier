@@ -151,7 +151,7 @@ async function main() {
         await navigator.clipboard.writeText(url);
         toast("Share link copied to clipboard", "success");
         if (store.get().panes.some((p) => p.source === "media" && p.mediaName)) {
-          toast("Heads-up: imported media isn't in the link — others see a placeholder", "info", 4200);
+          toast("Heads-up: imported media isn't in the link, others see a placeholder", "info", 4200);
         }
       } catch {
         // Clipboard blocked (permissions/insecure context) — the URL is the
@@ -282,7 +282,7 @@ async function main() {
       try {
         store.set(deserializeScene(entry.scene));
       } catch {
-        toast("that entry is corrupted — skipping it", "error");
+        toast("that entry is corrupted, skipping it", "error");
         return;
       }
       void restoreSceneMedia();
@@ -303,7 +303,7 @@ function welcomeBody(): HTMLDivElement {
     <p>this is a random bs project that started as an experiment without a clear goal.</p>
     <p>i then saw a potential use for creating visuals with a strange taste; but maybe
        you'll find it another use.</p>
-    <p>everything runs in your browser — nothing is uploaded anywhere. imported media
+    <p>everything runs in your browser, nothing is uploaded anywhere. imported media
        stays on your machine, so share links carry your scene but not your files.</p>
     <p class="welcome-cta">start with a blank canvas, or load a little demo to poke at?</p>`;
   return body;
