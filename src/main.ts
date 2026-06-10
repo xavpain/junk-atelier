@@ -1,6 +1,6 @@
 import "./style.css";
 import type { Bitmap, Scene, AspectKey } from "./types";
-import { createStore, defaultScene, demoScene, defaultCamera, selectPane, updateSelected, getSelected } from "./state/store";
+import { createStore, defaultScene, demoScene, defaultCamera, selectPane, updateSelected, getSelected, serializeScene, deserializeScene } from "./state/store";
 import { applyHashToStore, buildShareUrl } from "./share/shareLink";
 import { loadGeistPixel, rasterizeText, ensureFont } from "./font/rasterizeText";
 import { createRenderer } from "./render/renderer";
@@ -8,7 +8,10 @@ import { attachControls } from "./interaction/controls";
 import { buildPanels } from "./ui/panel";
 import { exportPng } from "./export/exportPng";
 import { recordWebm } from "./export/exportWebm";
-import { importMediaForPane, removeMedia, sampleMedia } from "./media/media";
+import { importMediaForPane, loadMediaBlob, removeMedia, sampleMedia, hasMedia } from "./media/media";
+import { hashBlob, putBlob, getBlob } from "./media/mediaStore";
+import { galleryEnabled } from "./gallery/api";
+import { openGallery } from "./ui/gallery";
 import { toast, dialog, formModal } from "./ui/notify";
 
 async function main() {
@@ -144,15 +147,17 @@ async function main() {
     onShare: async () => {
       const url = buildShareUrl(window.location.href, store.get());
       window.history.replaceState(null, "", url);
-      let copied = true;
-      try { await navigator.clipboard.writeText(url); } catch { copied = false; }
-      dialog(
-        copied ? "Link copied!" : "Share link",
-        copied
-          ? `Your scene link is on the clipboard — paste it anywhere to share.\n\n${url}`
-          : `Clipboard was blocked. Copy this link manually:\n\n${url}`,
-        copied ? "success" : "warn",
-      );
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Share link copied to clipboard", "success");
+        if (store.get().panes.some((p) => p.source === "media" && p.mediaName)) {
+          toast("Heads-up: imported media isn't in the link — others see a placeholder", "info", 4200);
+        }
+      } catch {
+        // Clipboard blocked (permissions/insecure context) — the URL is the
+        // only way to share, so fall back to showing it.
+        dialog("Share link", `Clipboard was blocked. Copy this link manually:\n\n${url}`, "warn");
+      }
     },
     onReset: () => {
       store.set(defaultScene());
@@ -164,10 +169,14 @@ async function main() {
       const id = getSelected(store.get()).id;
       try {
         const { name, kind } = await importMediaForPane(id, file);
+        // Cache the blob locally (content-hash keyed) so reloading a shared
+        // link on this machine can restore the media; best-effort.
+        const mediaId = await hashBlob(file).catch(() => "");
+        if (mediaId) void putBlob(mediaId, file);
         // Drop any stale cached frame from a previous import on this pane, then
         // default media to a fine (near 1:1) grid so detail survives.
         renderer.clearMediaSample(id);
-        store.update((s) => updateSelected(s, { source: "media", mediaName: name, cellSize: 1 }));
+        store.update((s) => updateSelected(s, { source: "media", mediaName: name, mediaId, cellSize: 1 }));
         renderer.markDirty();
         toast(`Loaded ${kind}: ${name}`, "success");
       } catch (e) {
@@ -178,7 +187,7 @@ async function main() {
       const id = getSelected(store.get()).id;
       removeMedia(id);
       renderer.clearMediaSample(id);
-      store.update((s) => updateSelected(s, { source: "text", mediaName: "" }));
+      store.update((s) => updateSelected(s, { source: "text", mediaName: "", mediaId: "" }));
       renderer.markDirty();
       toast("Media removed", "info");
     },
@@ -237,6 +246,48 @@ async function main() {
     axisVec: (a) => renderer.gizmoAxisVec(a),
   });
   window.addEventListener("resize", applyAspect);
+  document.getElementById("about-btn")?.addEventListener("click", () => showAbout(store));
+
+  // Re-attach media blobs from the local IndexedDB cache for panes that carry a
+  // mediaId (scene arrived via share link or gallery). Misses keep the
+  // placeholder — blobs only exist on the machine that imported them.
+  async function restoreSceneMedia() {
+    let restored = 0;
+    for (const p of store.get().panes) {
+      if (p.source !== "media" || !p.mediaId || hasMedia(p.id)) continue;
+      const blob = await getBlob(p.mediaId);
+      if (!blob) continue;
+      try {
+        await loadMediaBlob(p.id, blob, p.mediaName);
+        renderer.clearMediaSample(p.id);
+        restored++;
+      } catch { /* corrupt cache entry — leave the placeholder */ }
+    }
+    if (restored) {
+      renderer.markDirty();
+      toast(`Restored ${restored} media file${restored > 1 ? "s" : ""} from this device`, "info");
+    }
+  }
+  if (window.location.hash) void restoreSceneMedia();
+
+  const galleryBtn = document.getElementById("gallery-btn") as HTMLButtonElement | null;
+  if (galleryBtn && !galleryEnabled) galleryBtn.style.display = "none";
+  galleryBtn?.addEventListener("click", () => openGallery({
+    getScene: () => serializeScene(store.get()),
+    loadScene: async (entry) => {
+      const body = document.createElement("div");
+      body.className = "welcome";
+      body.innerHTML = `<p>this wipes your current scene. load it anyway?</p>`;
+      if (!(await formModal(`load "${entry.name}"?`, body, "load it", "nah"))) return;
+      try {
+        store.set(deserializeScene(entry.scene));
+      } catch {
+        toast("that entry is corrupted — skipping it", "error");
+        return;
+      }
+      void restoreSceneMedia();
+    },
+  }));
 
   // First-visit intro. Skipped when arriving via a shared/demo hash. The store's
   // subscriber repaints + rebuilds panels, so loading the demo just needs a set().
@@ -245,23 +296,40 @@ async function main() {
 
 const SEEN_KEY = "junkAtelier.seen.v1";
 
-function maybeShowWelcome(store: ReturnType<typeof createStore>): void {
-  if (window.location.hash) return; // shared link -> respect it, no intro
-  let seen = false;
-  try { seen = !!localStorage.getItem(SEEN_KEY); } catch { /* storage blocked */ }
-  if (seen) return;
-
+function welcomeBody(): HTMLDivElement {
   const body = document.createElement("div");
   body.className = "welcome";
   body.innerHTML = `
     <p>this is a random bs project that started as an experiment without a clear goal.</p>
     <p>i then saw a potential use for creating visuals with a strange taste; but maybe
        you'll find it another use.</p>
+    <p>everything runs in your browser — nothing is uploaded anywhere. imported media
+       stays on your machine, so share links carry your scene but not your files.</p>
     <p class="welcome-cta">start with a blank canvas, or load a little demo to poke at?</p>`;
+  return body;
+}
 
-  formModal("Welcome to Junk Atelier", body, "Load demo", "Start blank").then((loadDemo) => {
+function maybeShowWelcome(store: ReturnType<typeof createStore>): void {
+  if (window.location.hash) return; // shared link -> respect it, no intro
+  let seen = false;
+  try { seen = !!localStorage.getItem(SEEN_KEY); } catch { /* storage blocked */ }
+  if (seen) return;
+
+  formModal("Welcome to Junk Atelier", welcomeBody(), "Load demo", "Start blank").then((loadDemo) => {
     try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* ignore */ }
     if (loadDemo) store.set(demoScene());
+  });
+}
+
+// Re-opened any time via the About button. Unlike the first-visit flow, loading
+// the demo from here can clobber real work, so it goes through a confirm.
+function showAbout(store: ReturnType<typeof createStore>): void {
+  formModal("Welcome to Junk Atelier", welcomeBody(), "load demo", "close").then(async (loadDemo) => {
+    if (!loadDemo) return;
+    const body = document.createElement("div");
+    body.className = "welcome";
+    body.innerHTML = `<p>this wipes your current scene. load the demo anyway?</p>`;
+    if (await formModal("load demo?", body, "load demo", "nah")) store.set(demoScene());
   });
 }
 

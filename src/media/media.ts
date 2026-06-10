@@ -21,21 +21,27 @@ export function importMediaForPane(paneId: string, file: File): Promise<{ name: 
   if (file.size > MAX_FILE_MB * 1024 * 1024) {
     return Promise.reject(new Error(`file's too chunky (${(file.size / 1048576).toFixed(0)} MB). max is ${MAX_FILE_MB} MB — pick a smaller one.`));
   }
+  return loadMediaBlob(paneId, file, file.name);
+}
+
+// Loads any blob (a fresh import or one restored from the IndexedDB cache) as
+// a pane's media source. Kind comes from the blob's MIME type.
+export function loadMediaBlob(paneId: string, blob: Blob, name: string): Promise<{ name: string; kind: Kind }> {
   removeMedia(paneId);
-  const url = URL.createObjectURL(file);
-  const kind: Kind = file.type === "image/gif" ? "gif" : file.type.startsWith("video") ? "video" : "image";
+  const url = URL.createObjectURL(blob);
+  const kind: Kind = blob.type === "image/gif" ? "gif" : blob.type.startsWith("video") ? "video" : "image";
 
   return new Promise((resolve, reject) => {
     if (kind === "video") {
       const v = document.createElement("video");
       v.src = url; v.loop = true; v.muted = true; v.playsInline = true;
-      v.addEventListener("loadeddata", () => { v.play().catch(() => {}); resolve({ name: file.name, kind }); }, { once: true });
+      v.addEventListener("loadeddata", () => { v.play().catch(() => {}); resolve({ name, kind }); }, { once: true });
       v.addEventListener("error", () => reject(new Error("Failed to load video")), { once: true });
       registry.set(paneId, { el: v, kind, url });
     } else {
       const img = new Image();
       img.src = url;
-      img.addEventListener("load", () => resolve({ name: file.name, kind }), { once: true });
+      img.addEventListener("load", () => resolve({ name, kind }), { once: true });
       img.addEventListener("error", () => reject(new Error("Failed to load image")), { once: true });
       registry.set(paneId, { el: img, kind, url });
     }

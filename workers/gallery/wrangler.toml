@@ -1,0 +1,12 @@
+name = "junk-atelier-gallery"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+[vars]
+ALLOWED_ORIGIN = "https://xavpain.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "junk-gallery"
+# Run `wrangler d1 create junk-gallery` and paste the generated database id below.
+database_id = "REPLACE_WITH_DATABASE_ID"

@@ -34,6 +34,9 @@ export interface Pane {
   text: string;          // may be multiline (stacked bitmap)
   font: string;          // font-family for text source
   mediaName: string;     // label of imported media (object URL lives in runtime registry)
+  mediaId: string;       // content hash of imported media; keys the local IndexedDB
+                         // blob cache so the maker's own browser can restore it.
+                         // "" when no media. The blob itself never leaves the device.
   shape: Shape;
   thickness: number;     // morphological passes (>0 dilate, <0 erode)
   position: Vec3;        // world units; translate after obj-rotate, before orbit

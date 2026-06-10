@@ -250,19 +250,33 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .xp-ok:hover { filter: brightness(1.04); }
 .xp-ok:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.35); }
 
+/* ---------------- public gallery modal ---------------- */
+.xp-dialog.gallery { width: min(440px, 92vw); }
+.gallery-list { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.gallery-msg { opacity: 0.7; text-align: center; padding: 18px 0; }
+.gallery-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 9px; border: 1px solid var(--hard); background: rgba(255,255,255,0.04); }
+.gallery-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gallery-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-meta span { font-size: 11px; opacity: 0.65; }
+.gallery-load { flex-shrink: 0; }
+.gallery-submit label { display: block; margin-top: 10px; }
+.gallery-submit input { width: 100%; box-sizing: border-box; margin-top: 4px; }
+
 /* ---------------- floating links badge (donate / site) ---------------- */
 /* Bottom-centre pill — the one strip clear of the side rails (desktop) and the
    top/bottom docked panels (mobile). Pixel/brutalist chrome like the buttons. */
 #links { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
   z-index: 6; display: flex; gap: 8px; align-items: center;
   font-family: "Geist Pixel Square", var(--chrome); font-size: 12px; letter-spacing: 0.2px; }
-#links a { text-decoration: none; font-weight: 700; color: var(--ink);
+#links a, #links button { text-decoration: none; font-weight: 700; color: var(--ink);
+  font-family: inherit; font-size: inherit; letter-spacing: inherit;
   padding: 7px 12px; border: 2px solid var(--hard); background: #23232f;
   box-shadow: 3px 3px 0 0 var(--hard); white-space: nowrap;
   cursor: url("./assets/cursors/pointer.svg") 10 2, pointer;
   transition: transform 0.04s ease, box-shadow 0.04s ease, filter 0.1s ease; }
-#links a:hover { filter: brightness(1.12); }
-#links a:active { transform: translate(3px, 3px); box-shadow: 0 0 0 0 var(--hard); }
+#links a:hover, #links button:hover { filter: brightness(1.12); }
+#links a:active, #links button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 0 var(--hard); }
 #links a.donate { color: #2a0808; background: #ffb3c1; }
 
 /* ---------------- mobile / narrow screens ---------------- */

@@ -13,6 +13,7 @@ export function defaultPane(id = nextId(), text = "JUNK"): Pane {
     text,
     font: "Geist Pixel Square",
     mediaName: "",
+    mediaId: "",
     shape: "square",
     thickness: 0,
     position: { x: 0, y: 0, z: 0 },
