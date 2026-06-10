@@ -77,12 +77,22 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const scrollPx = new Map<string, number>();
   const mediaCache = new Map<string, ColorBitmap>();
 
+  // Whether anything needs continuous repainting. Recomputed only when the
+  // scene or media set changes (not every rAF tick).
+  let animating = false;
+  function recomputeAnimating() {
+    animating = !!scene && (scene.background.fade ||
+      scene.panes.some((p) => p.animate || p.floatEnabled || p.swayEnabled ||
+        (p.source === "media" && mediaCache.get(p.id)?.dynamic)));
+  }
+
   // Static images sample once and cache; dynamic (video/gif) resample each call.
   function getSample(id: string): ColorBitmap | null {
     const c = mediaCache.get(id);
     if (c && !c.dynamic) return c;
     const s = mediaSampler(id);
-    if (s) mediaCache.set(id, s);
+    if (s && !c) { mediaCache.set(id, s); recomputeAnimating(); }
+    else if (s) mediaCache.set(id, s);
     return s ?? c ?? null;
   }
 
@@ -101,16 +111,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     canvas.height = Math.round(rect.height * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     dirty = true;
+    wake();
   }
 
   function bmp(id: string): Bitmap {
     return bitmaps.get(id) ?? EMPTY_BITMAP;
   }
 
+  // The rAF loop runs only while something animates or a repaint is pending;
+  // otherwise it stops and wake() restarts it (zero idle CPU). lastTs resets on
+  // stop so the first dt after a wake doesn't span the idle gap.
+  let rafPending = false;
+  function wake() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(frame);
+  }
+
   function frame(ts: number) {
-    const animating = !!scene && (scene.background.fade ||
-      scene.panes.some((p) => p.animate || p.floatEnabled || p.swayEnabled ||
-        (p.source === "media" && mediaCache.get(p.id)?.dynamic)));
+    rafPending = false;
     if (scene) {
       const dt = lastTs ? ts - lastTs : 0;
       for (const p of scene.panes) {
@@ -122,7 +141,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     lastTs = ts;
     if (dirty && scene) paint(ts);
-    requestAnimationFrame(frame);
+    if (animating || dirty) wake();
+    else lastTs = 0;
   }
 
   function paint(ts: number) {
@@ -135,14 +155,24 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     drawBackground(ctx, scene.background, vp, ts);
 
     // Resolve each pane's source (text bitmap or sampled media grid), apply
-    // motion, project, then sort far->near for painter's blend.
-    const samples = scene.panes.map((p) => (p.source === "media" ? getSample(p.id) : null));
-    const bms = scene.panes.map((p, i) =>
-      p.source === "media"
-        ? (samples[i] ? sizeBitmap(samples[i]!.cols, samples[i]!.rows) : EMPTY_BITMAP)
-        : bmp(p.id));
-    const moved = scene.panes.map((p) => animatedPane(p, ts));
-    const quads = moved.map((p, i) => projectPlane(bms[i], p, scene!.camera, vp));
+    // motion, project, then sort far->near for painter's blend. Single pass —
+    // intermediate per-pane arrays/copies aren't kept.
+    const n = scene.panes.length;
+    const samples: (ColorBitmap | null)[] = new Array(n);
+    const bms: Bitmap[] = new Array(n);
+    const quads: ProjectedQuad[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const p = scene.panes[i];
+      const s = p.source === "media" ? getSample(p.id) : null;
+      samples[i] = s;
+      // A media pane with a name but no blob on this device (scene came from a
+      // share link / the gallery) projects a 16:10 stand-in so the placeholder
+      // has a quad to draw into.
+      bms[i] = p.source === "media"
+        ? (s ? sizeBitmap(s.cols, s.rows) : p.mediaName ? sizeBitmap(16, 10) : EMPTY_BITMAP)
+        : bmp(p.id);
+      quads[i] = projectPlane(bms[i], animatedPane(p, ts), scene.camera, vp);
+    }
     const order = quads
       .map((_, i) => i)
       .filter((i) => quads[i].valid)
@@ -157,6 +187,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         if (samples[i]) {
           const cs = mediaCellSize(p.cellSize, quads[i]);
           drawColorCells(ctx, repixelateColor(samples[i]!, quads[i], vp, cs), p.alpha, cs);
+        } else if (p.mediaName) {
+          drawMissingMedia(quads[i], p);
         }
         continue;
       }
@@ -193,6 +225,33 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const area = Math.max(0, maxX - minX) * Math.max(0, maxY - minY);
     const est = area / (cellSize * cellSize);
     return est <= MEDIA_CELL_CAP ? cellSize : Math.ceil(Math.sqrt(area / MEDIA_CELL_CAP));
+  }
+
+  // Placeholder for a media pane whose blob isn't on this device — shared
+  // scenes carry the scene, not the files. Hatched quad + the media's name.
+  function drawMissingMedia(q: ProjectedQuad, p: Pane) {
+    if (!q.valid) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha));
+    ctx.beginPath();
+    ctx.moveTo(q.corners[0].x, q.corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(q.corners[i].x, q.corners[i].y);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(128,128,140,0.14)";
+    ctx.fill();
+    ctx.strokeStyle = "#8a8a96";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const cx = (q.corners[0].x + q.corners[1].x + q.corners[2].x + q.corners[3].x) / 4;
+    const cy = (q.corners[0].y + q.corners[1].y + q.corners[2].y + q.corners[3].y) / 4;
+    ctx.fillStyle = "#8a8a96";
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`{${p.mediaName}}`, cx, cy);
+    ctx.restore();
   }
 
   function drawCard(q: ProjectedQuad, p: Pane) {
@@ -290,15 +349,14 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   }
 
   resize();
-  requestAnimationFrame(frame);
 
   return {
-    setScene(s) { scene = s; dirty = true; },
-    setBitmaps(m) { bitmaps = m; dirty = true; },
-    setMediaSampler(fn) { mediaSampler = fn; dirty = true; },
+    setScene(s) { scene = s; dirty = true; recomputeAnimating(); wake(); },
+    setBitmaps(m) { bitmaps = m; dirty = true; wake(); },
+    setMediaSampler(fn) { mediaSampler = fn; dirty = true; wake(); },
     resize,
-    markDirty() { dirty = true; },
-    clearMediaSample(id) { mediaCache.delete(id); dirty = true; },
+    markDirty() { dirty = true; wake(); },
+    clearMediaSample(id) { mediaCache.delete(id); dirty = true; recomputeAnimating(); wake(); },
     beginCapture(w, h) {
       // Same framing (viewport stays cssW/cssH), rasterized at w×h via transform.
       showOverlay = false;

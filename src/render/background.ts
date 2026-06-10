@@ -33,16 +33,29 @@ export function drawBackground(
     ctx.stroke();
   } else if (bg.style === "dotted") {
     const rad = Math.max(0.5, bg.dotRadius);
-    ctx.fillStyle = bg.accent;
-    ctx.beginPath();
-    for (let y = step / 2; y < height; y += step) {
-      for (let x = step / 2; x < width; x += step) {
-        ctx.moveTo(x + rad, y);
-        ctx.arc(x, y, rad, 0, Math.PI * 2);
-      }
-    }
-    ctx.fill();
+    ctx.fillStyle = dotPattern(ctx, step, rad, bg.accent);
+    ctx.fillRect(0, 0, width, height);
   }
+}
+
+// One dot rendered into a step×step tile, repeated as a fill pattern — replaces
+// thousands of per-frame arc() calls with a single fillRect. Cached until
+// spacing/radius/colour change.
+let dotCache: { key: string; pattern: CanvasPattern } | null = null;
+
+function dotPattern(ctx: CanvasRenderingContext2D, step: number, rad: number, accent: string): CanvasPattern {
+  const key = `${step}|${rad}|${accent}`;
+  if (dotCache?.key === key) return dotCache.pattern;
+  const tile = document.createElement("canvas");
+  tile.width = step; tile.height = step;
+  const tctx = tile.getContext("2d")!;
+  tctx.fillStyle = accent;
+  tctx.beginPath();
+  tctx.arc(step / 2, step / 2, rad, 0, Math.PI * 2);
+  tctx.fill();
+  const pattern = ctx.createPattern(tile, "repeat")!;
+  dotCache = { key, pattern };
+  return pattern;
 }
 
 function lerpHex(a: string, b: string, t: number): string {
@@ -53,8 +66,18 @@ function lerpHex(a: string, b: string, t: number): string {
   return `rgb(${r},${g},${bl})`;
 }
 
+// Memoized — called twice per frame while a background fade animates.
+const hexCache = new Map<string, [number, number, number]>();
+
 function hexRgb(hex: string): [number, number, number] {
+  const hit = hexCache.get(hex);
+  if (hit) return hit;
   const h = hex.replace("#", "");
   const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0").slice(0, 6);
-  return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
+  const rgb: [number, number, number] = [
+    parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16),
+  ];
+  if (hexCache.size > 256) hexCache.clear();
+  hexCache.set(hex, rgb);
+  return rgb;
 }

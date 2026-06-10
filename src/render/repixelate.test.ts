@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { repixelate, repixelateColor } from "./repixelate";
+import type { ColorCellGrid } from "./repixelate";
 import { solveHomography } from "../math/homography";
 import { mat3Inverse } from "../math/mat3";
 import type { Bitmap, ColorBitmap, ProjectedQuad, Vec2 } from "../types";
@@ -11,6 +12,15 @@ function quad2to20(): ProjectedQuad {
   return { corners: dst, homography: h, inverse: mat3Inverse(h), meanDepth: 1, valid: true };
 }
 
+// Reads the colour written at screen-px (sx, sy), or null if transparent there.
+function colorAt(grid: ColorCellGrid, cellSize: number, sx: number, sy: number) {
+  const gx = sx / cellSize - grid.gx0;
+  const gy = sy / cellSize - grid.gy0;
+  const o = (gy * grid.cols + gx) * 4;
+  const [r, g, b, a] = grid.data.slice(o, o + 4);
+  return a === 0 ? null : { r, g, b, a };
+}
+
 describe("repixelateColor", () => {
   it("emits one coloured cell per opaque source pixel, skips transparent", () => {
     // 2x2: (0,0) red, (1,0) transparent, (0,1) green, (1,1) blue.
@@ -19,13 +29,12 @@ describe("repixelateColor", () => {
       0, 255, 0, 255,  0, 0, 255, 255,
     ]);
     const cb: ColorBitmap = { cols: 2, rows: 2, data, dynamic: false };
-    const cells = repixelateColor(cb, quad2to20(), { width: 20, height: 20 }, 10);
-    expect(cells).toHaveLength(3); // transparent pixel dropped
-    const at = (x: number, y: number) => cells.find((c) => c.sx === x && c.sy === y);
-    expect(at(0, 0)).toMatchObject({ r: 255, g: 0, b: 0 });
-    expect(at(0, 10)).toMatchObject({ r: 0, g: 255, b: 0 });
-    expect(at(10, 10)).toMatchObject({ r: 0, g: 0, b: 255 });
-    expect(at(10, 0)).toBeUndefined();
+    const grid = repixelateColor(cb, quad2to20(), { width: 20, height: 20 }, 10);
+    expect(grid.count).toBe(3); // transparent pixel dropped
+    expect(colorAt(grid, 10, 0, 0)).toMatchObject({ r: 255, g: 0, b: 0 });
+    expect(colorAt(grid, 10, 0, 10)).toMatchObject({ r: 0, g: 255, b: 0 });
+    expect(colorAt(grid, 10, 10, 10)).toMatchObject({ r: 0, g: 0, b: 255 });
+    expect(colorAt(grid, 10, 10, 0)).toBeNull();
   });
 });
 
@@ -43,8 +52,9 @@ describe("repixelate", () => {
       corners: dst, homography, inverse: mat3Inverse(homography), meanDepth: 1, valid: true,
     };
     const cells = repixelate(bmp, quad, { width: 20, height: 20 }, 10);
-    const set = cells.map((c) => `${c.sx},${c.sy}`).sort();
-    expect(set).toEqual(["0,0", "10,10"]);
+    const set: string[] = [];
+    for (let i = 0; i < cells.count; i++) set.push(`${cells.xy[i * 2]},${cells.xy[i * 2 + 1]}`);
+    expect(set.sort()).toEqual(["0,0", "10,10"]);
   });
 
   it("returns nothing for an invalid quad", () => {
@@ -56,6 +66,6 @@ describe("repixelate", () => {
       meanDepth: Infinity,
       valid: false,
     };
-    expect(repixelate(bmp, quad, { width: 20, height: 20 }, 10)).toEqual([]);
+    expect(repixelate(bmp, quad, { width: 20, height: 20 }, 10).count).toBe(0);
   });
 });
