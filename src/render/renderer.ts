@@ -214,7 +214,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   }
 
   // Effective media cell size: never let one pane exceed MEDIA_CELL_CAP cells.
-  const MEDIA_CELL_CAP = 90000;
+  // Sized for the batched putImageData/drawImage path — at 1080p fullscreen this
+  // allows an effective cellSize down to ~2.4 instead of ~4.8.
+  const MEDIA_CELL_CAP = 360000;
   function mediaCellSize(cellSize: number, q: ProjectedQuad): number {
     if (!q.valid) return cellSize;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

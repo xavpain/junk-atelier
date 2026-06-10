@@ -8,7 +8,10 @@ interface Entry {
   url: string;
 }
 
-const MAX_DIM = 320; // longest sampled edge; higher = finer (near 1:1) detail
+// Longest sampled edge; higher = finer (near 1:1) detail. Images sample once
+// so they can afford a fine grid; video/gif pay getImageData every frame.
+const MAX_DIM_IMAGE = 1024;
+const MAX_DIM_VIDEO = 480;
 const MAX_FILE_MB = 50; // reject heavier imports — keeps it snappy, all client-side
 
 const registry = new Map<string, Entry>();
@@ -69,7 +72,8 @@ export function sampleMedia(paneId: string): ColorBitmap | null {
   const srcH = e.kind === "video" ? (e.el as HTMLVideoElement).videoHeight : (e.el as HTMLImageElement).naturalHeight;
   if (!srcW || !srcH) return null;
 
-  const scale = Math.min(1, MAX_DIM / Math.max(srcW, srcH));
+  const maxDim = e.kind === "image" ? MAX_DIM_IMAGE : MAX_DIM_VIDEO;
+  const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
   const cols = Math.max(1, Math.round(srcW * scale));
   const rows = Math.max(1, Math.round(srcH * scale));
   sampler.width = cols; sampler.height = rows;
