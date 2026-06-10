@@ -24,6 +24,8 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_GALLERY_URL: https://junk-atelier-gallery.xavier-pain.workers.dev
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

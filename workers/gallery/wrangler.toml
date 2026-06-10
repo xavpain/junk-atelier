@@ -8,5 +8,4 @@ ALLOWED_ORIGIN = "https://xavpain.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "junk-gallery"
-# Run `wrangler d1 create junk-gallery` and paste the generated database id below.
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "36c96d96-7043-4b87-ad7f-f47d3793d55c"
